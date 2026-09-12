@@ -21,8 +21,6 @@ import sys
 from difflib import SequenceMatcher
 
 # ─────────────────────── 상수 ───────────────────────
-CONTEXT_CHARS = 30          # 검출 지점 앞뒤로 보여줄 글자 수
-NAME_SIMILARITY_MIN = 0.7   # 표기 흔들림 판정 최소 유사도 (자모 단위 비교)
 MIN_NAME_LEN = 2            # 고유명사 후보 최소 길이
 MAX_NAME_LEN = 6            # 고유명사 후보 최대 길이
 MIN_OCCURRENCE = 2          # 미등록 이름으로 제안할 최소 등장 횟수
@@ -179,13 +177,23 @@ def korean_age_to_int(token):
 def find_ages(text):
     """본문에서 나이 표현을 찾아 [(숫자, 위치)] 반환."""
     found = []
-    for m in re.finditer(r"(\d{1,3})\s*(?:살|세|해)(?![가-힣]{2})", text):
+    for m in re.finditer(r"(\d{1,3})\s*(?:살|세|해)", text):
+        nxt = text[m.end():]
+        if nxt.startswith(("기", "대")):
+            continue  # 19세기, 5세대 등 차단
         found.append((int(m.group(1)), m.start()))
 
     tens = "|".join(sorted(list(KOR_TENS) + ["스무"], key=len, reverse=True))
     ones = "|".join(KOR_ONES)
-    for m in re.finditer(rf"({tens})({ones})?\s*(?:살|세|해)(?![가-힣]{{2}})", text):
-        raw = re.split(r"\s*(?:살|세|해)", m.group(0))[0].strip()
+    # 정규식이 이미 (tens단)?(ones단)?\s*(살|세|해) 구조를 잡아줬으므로
+    # m.group(1)=tens, m.group(2)=ones를 그대로 써서 raw를 다시 자르지 않는다.
+    for m in re.finditer(rf"({tens})({ones})?\s*(?:살|세|해)", text):
+        raw_tens = m.group(1) or ""
+        raw_ones = m.group(2) or ""
+        raw = raw_tens + raw_ones
+        nxt = text[m.end():]
+        if nxt.startswith(("기", "대")):
+            continue  # 19세기, 5세대 등 차단
         value = korean_age_to_int(raw)
         if value is not None:
             found.append((value, m.start()))
