@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { loadSettings, saveLastResult, loadSettings as loadStored } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
-import { refineProposedAdditions, RefineResult } from "@/app/utils/parser";
+import { refineProposedAdditions, RefineResult, approveItems } from "@/app/utils/parser";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -18,42 +18,28 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [activeGroup, setActiveGroup] = useState<Group>("설정오류");
   const [refinedResult, setRefinedResult] = useState<RefineResult | null>(null);
   const [refineInProgress, setRefineInProgress] = useState(false);
+  const [pendingItems, setPendingItems] = useState<ProposedAddition[]>([]);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+
+  // 결과가 바뀔 때 제안 목록을 화면 전용 상태로 초기화
+  useEffect(() => {
+    if (!result) {
+      setPendingItems([]);
+      setApprovalMessage(null);
+      return;
+    }
+    setPendingItems(result.proposed_additions ?? []);
+  }, [result]);
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
 
-  const itemsInGroup = (group: Group) => {
-    if (group === "설정오류" || group === "확인 필요") {
-      return (result?.violations ?? []).filter((v) => toGroup(v) === group);
-    }
-    if (group === "추가 제안") {
-      return (result?.proposed_additions ?? []).filter((p) => p.category !== "제외");
-    }
-    return [];
-  };
-
   const counts = groups.map((g) => ({
     group: g,
-    count: itemsInGroup(g).length,
+    count:
+      g === "추가 제안"
+        ? pendingItems.length
+        : (result?.violations ?? []).filter((v) => toGroup(v) === g).length,
   }));
-
-  // 결과가 바뀔 때 기본 탭을 재설정: 설정오류 > 0이면 설정오류, 없으면 확인 필요 > 0이면 확인 필요
-  useEffect(() => {
-    if (!result) return;
-    if (counts[0].count > 0) {
-      setActiveGroup("설정오류");
-    } else if (counts[1].count > 0) {
-      setActiveGroup("확인 필요");
-    } else {
-      setActiveGroup("설정오류");
-    }
-  }, [result]);
-
-  const extraItems = (): ProposedAddition[] => {
-    const base = (refinedResult?.errors.length === 0 && refinedResult?.after && refinedResult?.after > 0)
-      ? refinedResult.refined
-      : result?.proposed_additions ?? [];
-    return base.filter((p) => p.category !== "제외");
-  };
 
   const handleRefine = async () => {
     if (!result?.proposed_additions) return;
@@ -61,6 +47,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     try {
       const r = await refineProposedAdditions(result.proposed_additions);
       setRefinedResult(r);
+      if (r.errors.length === 0 && r.after !== undefined && r.after > 0) {
+        setPendingItems(r.refined);
+      }
     } finally {
       setRefineInProgress(false);
     }
@@ -142,7 +131,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "설정오류" && counts[0].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">설정오류 · {counts[0].count}건</h3>
-              {(itemsInGroup("설정오류") as Violation[]).map((v, idx) => (
+              {(result?.violations ?? []).filter((v) => toGroup(v) === "설정오류").map((v, idx) => (
                 <div key={`${v.line}-${v.subject}-${idx}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -167,7 +156,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "확인 필요" && counts[1].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">확인 필요 · {counts[1].count}건</h3>
-              {(itemsInGroup("확인 필요") as Violation[]).map((v, idx) => (
+              {(result?.violations ?? []).filter((v) => toGroup(v) === "확인 필요").map((v, idx) => (
                 <div key={`${v.line}-${v.subject}-${idx}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -192,51 +181,92 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "추가 제안" && counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">
-                추가 제안 · {extraItems().length}건
+                추가 제안 · {pendingItems.length}건
               </h3>
 
+              {approvalMessage && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
+                  <span className="font-medium text-[var(--foreground)]">반영 결과</span>
+                  <p className="text-[var(--muted-foreground)]">{approvalMessage}</p>
+                </div>
+              )}
+
               <div className="flex flex-col gap-2">
-                {extraItems().map((p, idx) => (
-                  <div
-                    key={`${p.name}-${idx}`}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{p.name}</span>
-                          {p.is_proper === true && (
-                            <span className="text-xs text-[var(--muted-foreground)]">
-                              Solar 정리됨 · {p.count}회 · 첫 등장 줄 {p.first_line}
-                            </span>
-                          )}
-                          {p.is_proper !== true && (
-                            <span className="text-xs text-[var(--muted-foreground)]">
-                              {p.count}회 · 첫 등장 줄 {p.first_line}
-                            </span>
+                {pendingItems
+                  .filter((p) => p.category !== "제외")
+                  .map((p, idx) => (
+                    <div
+                      key={`${p.name}-${idx}`}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{p.name}</span>
+                            {p.is_proper === true && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                Solar 정리됨 · {p.count}회 · 첫 등장 줄 {p.first_line}
+                              </span>
+                            )}
+                            {p.is_proper !== true && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                {p.count}회 · 첫 등장 줄 {p.first_line}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-sm text-[var(--muted-foreground)]">{p.context}</p>
+                          {p.refine_reason && (
+                            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                              {p.refine_reason}
+                            </p>
                           )}
                         </div>
-                        <p className="mt-2 text-sm text-[var(--muted-foreground)]">{p.context}</p>
-                        {p.refine_reason && (
-                          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                            {p.refine_reason}
-                          </p>
-                        )}
                       </div>
+                      <ClassificationButtons
+                        value={p.category ?? undefined}
+                        onChange={(cat) => {
+                          setPendingItems((prev) =>
+                            prev.map((n) => (n === p ? { ...n, category: cat } : n))
+                          );
+                        }}
+                      />
                     </div>
-                    <ClassificationButtons
-                      value={p.category ?? undefined}
-                      onChange={(cat) => {
-                        const next = result?.proposed_additions ?? [];
-                        const updated = next.map((n) =>
-                          n === p ? { ...n, category: cat } : n
-                        );
-                        // 분류만 화면에 반영하고, 설정집 저장은 승인 시점에 따로 처리한다.
-                      }}
-                    />
-                  </div>
-                ))}
+                  ))}
               </div>
+
+              {(() => {
+                const categorizedCount = pendingItems.filter(
+                  (p) => p.category === "인물" || p.category === "지명" || p.category === "세계관"
+                ).length;
+                return categorizedCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const resultOfApproval = approveItems(pendingItems);
+                      const addedCount = resultOfApproval.added.length;
+                      const skippedCount = resultOfApproval.skipped;
+                      const excludedCount = pendingItems.filter(
+                        (p) => p.category === "제외"
+                      ).length;
+                      const totalRemoved = addedCount + skippedCount + excludedCount;
+
+                      setApprovalMessage(
+                        `설정집에 반영 ${addedCount}건, 이미 있어서 건너뛴 ${skippedCount}건` +
+                          (excludedCount > 0
+                            ? `, 제외한 ${excludedCount}건`
+                            : "") +
+                          ` (총 ${totalRemoved}건 처리)`
+                      );
+                      setPendingItems((prev) =>
+                        prev.filter((p) => p.category !== "제외")
+                      );
+                    }}
+                    className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
+                  >
+                    설정집 반영 {categorizedCount}건
+                  </button>
+                ) : null;
+              })()}
             </div>
           )}
 
