@@ -119,7 +119,12 @@ def _build_prompt(proposed_additions):
     )
     lines.append("")
     lines.append(
-        "판단이 애매하면 is_proper: true로 두고 category를 '모르겠음'으로 하라. "
+        "애매하면 is_proper: false로 두고 결과 배열에 넣지 마라. "
+        "확실한 것만 is_proper: true로 넣어라. "
+        "일반 사물 이름(무기·도구·돈·보상·상태·감정 같은 보통 명사)은 "
+        "그 작품에서만 특별한 의미를 갖는 게 아니면 제외하라. "
+        "조사나 어미가 붙은 형태(예: '...는', '...을', '...가', '...의' 등)는 "
+        "핵심 명사만 보고 판별하고, 그런 정형적 굴절 형태는 고유명사 후보에서 빼라. "
         "설정집 반영 여부는 사용자가 마지막에 정한다."
     )
     lines.append(
@@ -139,13 +144,15 @@ def _build_prompt(proposed_additions):
         context = item.get("context", "")
         lines.append(f"{i}. name: {name!r}, context: {context!r}")
 
-    lines.append("")
     lines.append(
         "결과는 반드시 다음 구조의 JSON 하나만 출력하라:"
     )
     lines.append(
         "  {"
-        "\"candidates\": [위 항목들의 배열]"
+        "\"candidates\": ["
+        "위 구조를 갖는 객체들을 넣되, "
+        "is_proper가 true인 것만 배열에 포함한다"
+        "]"
         "}"
     )
     return "\n".join(lines)
