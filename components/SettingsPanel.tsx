@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { loadSettings, hasSettings, clearSettings, saveSettings } from "@/app/utils/storage";
-import { PresetCategory } from "@/app/utils/types";
 
 function parseCharacterNames(settingsRaw: string): { name: string; detailLines: string[] }[] {
   const chars: { name: string; detailLines: string[] }[] = [];
@@ -25,31 +24,21 @@ function parseCharacterNames(settingsRaw: string): { name: string; detailLines: 
   return chars;
 }
 
-function parseEpisodeIndex(settingsRaw: string, name: string): number[] {
-  // 설정집 문자열에서 인물 이름이 등장한 위치를 단순 라인 번호로 매핑한다.
-  // 실제 검사 JSON의 line 필드와 직접 연동되기 전까지 UI용 근사값이다.
-  const lines = settingsRaw.split(/\r?\n/);
-  const hits: number[] = [];
-  const target = name.trim();
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(target)) hits.push(i + 1);
-  }
-  return hits;
-}
+
 
 export function SettingsPanel() {
   const [settingsRaw, setSettingsRaw] = useState(loadSettings());
   const characters = useMemo(() => parseCharacterNames(settingsRaw), [settingsRaw]);
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
+
+  // 항목 추가 폼 상태
+  const [addFormIdx, setAddFormIdx] = useState<number | null>(null);
+  const [addField, setAddField] = useState("");
+  const [addValue, setAddValue] = useState("");
 
   const handleInit = () => {
     clearSettings();
     setSettingsRaw("");
-  };
-
-  const toggleLineCounts = (idx: number) => {
-    setExpandedIdx((prev) => (prev === idx ? null : idx));
   };
 
   const saveField = (idx: number, field: string, value: string) => {
@@ -66,7 +55,6 @@ export function SettingsPanel() {
     }
 
     if (targetLine === -1) {
-      // 필드가 없으면 새로 추가
       const newLine = `- ${field}: ${value}`;
       const nextSection = updatedLines.findIndex((l, i) => i > start && l.trim().startsWith("# "));
       if (nextSection === -1) {
@@ -89,9 +77,23 @@ export function SettingsPanel() {
     setEditingName(newName);
   };
 
-  const countLinesFor = (name: string) => {
-    const count = parseEpisodeIndex(settingsRaw, name);
-    return count.length > 0 ? count.join(", ") : "0";
+  const openAddForm = (idx: number) => {
+    setAddFormIdx(idx);
+    setAddField("");
+    setAddValue("");
+  };
+
+  const closeAddForm = () => {
+    setAddFormIdx(null);
+    setAddField("");
+    setAddValue("");
+  };
+
+  const commitAddField = (idx: number) => {
+    const field = addField.trim();
+    if (!field) return;
+    saveField(idx, field, addValue.trim());
+    closeAddForm();
   };
 
   return (
@@ -133,8 +135,14 @@ export function SettingsPanel() {
         ) : (
           <ul className="flex flex-col gap-3">
             {characters.map((ch, idx) => {
-              const lines = parseEpisodeIndex(settingsRaw, ch.name);
-              const lineCount = lines.length;
+              // 값이 있는 라인만 필터링
+              const nonEmptyLines = ch.detailLines.filter((line) => {
+                const colonIdx = line.indexOf(":");
+                if (colonIdx <= 0) return false;
+                const val = line.slice(colonIdx + 1).trim();
+                return val.length > 0;
+              });
+
               return (
                 <li
                   key={idx}
@@ -155,54 +163,84 @@ export function SettingsPanel() {
                           className="text-base font-medium bg-transparent border-none text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none"
                           placeholder="인물 이름"
                         />
-                        <span className="text-sm text-[var(--muted-foreground)]">
-                          {lineCount}회
-                        </span>
                       </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                        {ch.detailLines.map((line) => {
-                          const colonIdx = line.indexOf(":");
-                          const field = colonIdx > 0 ? line.slice(0, colonIdx).trim() : "";
-                          const val = colonIdx > 0 ? line.slice(colonIdx + 1).trim() : "";
-                          return (
-                            <span key={field} className="text-[var(--muted-foreground)]">
-                              {field}:
-                              {val ? (
+
+                      {/* 값이 있는 항목만 표시 */}
+                      {nonEmptyLines.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                          {nonEmptyLines.map((line, i) => {
+                            const colonIdx = line.indexOf(":");
+                            const field = colonIdx > 0 ? line.slice(0, colonIdx).trim() : "";
+                            const val = colonIdx > 0 ? line.slice(colonIdx + 1).trim() : "";
+                            return (
+                              <span
+                                key={`${i}-\u0000${line}`}
+                                className="text-[var(--muted-foreground)]"
+                              >
+                                {field}:
                                 <input
                                   type="text"
                                   value={val}
                                   onChange={(e) => saveField(idx, field, e.target.value)}
                                   className="ml-1 bg-transparent border-none text-[var(--foreground)] text-sm focus:outline-none"
                                 />
-                              ) : (
-                                <input
-                                  type="text"
-                                  value=""
-                                  onChange={(e) => saveField(idx, field, e.target.value)}
-                                  className="ml-1 bg-transparent border-none text-[var(--foreground)] text-sm focus:outline-none placeholder-[var(--muted-foreground)]"
-                                  placeholder="입력"
-                                />
-                              )}
-                            </span>
-                          );
-                        })}
-                      </div>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-[var(--muted-foreground)]">
+                          아직 설정된 값이 없습니다.
+                        </p>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleLineCounts(idx)}
-                      className="text-sm text-[var(--accent)] underline underline-offset-2 hover:no-underline shrink-0 pt-1"
-                    >
-                      {lineCount > 0 ? `몇 화 (${lineCount}개)` : "표기 없음"}
-                    </button>
-                  </div>
 
-                  {expandedIdx === idx && lineCount > 0 && (
-                    <div className="mt-3 rounded border border-[var(--border)] bg-[var(--card)]/60 p-3 text-sm text-[var(--muted-foreground)]">
-                      <span className="font-medium text-[var(--foreground)]">등장 라인:</span>{" "}
-                      {lines.join(", ")}
+                    {/* 항목 추가 버튼 / 폼 */}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {addFormIdx === idx ? (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="필드명 (별칭, 나이, 소속, 불가, 비고 등)"
+                            value={addField}
+                            onChange={(e) => setAddField(e.target.value)}
+                            onKeyDown={(e) => e.key === "Escape" && closeAddForm()}
+                            className="flex-1 min-w-[120px] rounded-md border border-[var(--border)] bg-[var(--card)]/80 px-2 py-1 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            placeholder="값"
+                            value={addValue}
+                            onChange={(e) => setAddValue(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && commitAddField(idx)}
+                            className="flex-1 min-w-[120px] rounded-md border border-[var(--border)] bg-[var(--card)]/80 px-2 py-1 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => commitAddField(idx)}
+                            className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-sm text-white hover:bg-[var(--foreground)] transition-colors"
+                          >
+                            추가
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeAddForm}
+                            className="rounded-md border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--card)]/80 transition-colors"
+                          >
+                            취소
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openAddForm(idx)}
+                          className="rounded-md border border-[var(--accent)] bg-[var(--accent)]/10 px-3 py-1 text-sm text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
+                        >
+                          + 항목 추가
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </li>
               );
             })}
