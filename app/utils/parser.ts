@@ -169,71 +169,152 @@ export async function refineProposedAdditions(
   };
 }
 
-export function approveItems(items: ProposedAddition[]): void {
-  // 승인 전에는 설정집에 반영하지 않는다(PRD: 자동 반영 없음, 승인 후 반영).
-  if (typeof window === "undefined") return;
-
-  const settings = loadSettings();
-  const updated = buildUpdatedSettings(settings, items);
-  saveSettings(updated);
+export interface ApprovalResult {
+  added: ProposedAddition[];
+  skipped: number;
 }
 
-function buildUpdatedSettings(existing: string, items: ProposedAddition[]): string {
-  const approved = items.filter((it) => it.category && it.category !== "제외");
+export function approveItems(items: ProposedAddition[]): ApprovalResult {
+  if (typeof window === "undefined") return { added: [], skipped: 0 };
 
-  if (approved.length === 0) return existing;
+  const settings = loadSettings();
+  const result = buildUpdatedSettings(settings, items);
+  saveSettings(result.updated);
+  return result;
+}
 
-  const lines: string[] = existing.split(/\r?\n/);
-  const sectionIndex = (name: string) => {
-    return lines.findIndex((l) => l.trim().startsWith(name));
-  };
+interface ExistingNames {
+  인물: Set<string>;
+  별칭: Set<string>;
+  지명: Set<string>;
+}
 
-  let 인물섹션 = sectionIndex("# 등장인물");
-  let 지명섹션 = sectionIndex("# 지명");
-  let 세계관섹션 = sectionIndex("# 세계관");
+const CHARACTER_SECTION_HEADERS = new Set(["# 등장인물", "# 인물"]);
+const PLACE_SECTION_HEADERS = new Set(["# 지명", "# 장소"]);
 
-  let 인물추가 = "";
-  let 지명추가 = "";
-  let 세계관추가 = "";
+function extractExistingNames(text: string): ExistingNames {
+  const 인물 = new Set<string>();
+  const 별칭 = new Set<string>();
+  const 지명 = new Set<string>();
+  let section: "characters" | "places" | null = null;
 
-  for (const item of approved) {
-    if (item.category === "인물") {
-      인물추가 = 인물추가 ? `${인물추가}\n- ${item.name}` : `- ${item.name}`;
-    } else if (item.category === "지명") {
-      지명추가 = 지명추가 ? `${지명추가}\n- ${item.name}` : `- ${item.name}`;
-    } else if (item.category === "세계관") {
-      세계관추가 = 세계관추가 ? `${세계관추가}\n- ${item.name}` : `- ${item.name}`;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("# ")) {
+      if (CHARACTER_SECTION_HEADERS.has(line)) {
+        section = "characters";
+      } else if (PLACE_SECTION_HEADERS.has(line)) {
+        section = "places";
+      } else {
+        section = null;
+      }
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      if (section === "characters") {
+        인물.add(line.slice(3).trim());
+      }
+      continue;
+    }
+    if (section === "characters") {
+      const m = line.match(/^\s*-\s*([^:]+):\s*(.+)$/);
+      if (m) {
+        const field = m[1].trim();
+        if (field === "별칭") {
+          for (const v of m[2].split(",")) {
+            별칭.add(v.trim());
+          }
+        }
+      }
+      continue;
+    }
+    if (section === "places") {
+      const m = line.match(/^\s*-\s+(.+)$/);
+      if (m) {
+        지명.add(m[1].trim());
+      }
     }
   }
 
-  if (!인물추가 && !지명추가 && !세계관추가) return existing;
+  return { 인물, 별칭, 지명 };
+}
 
-  // 섹션이 없으면 생성한다.
-  if (인물섹션 === -1) {
-    lines.push("");
-    lines.push("# 등장인물");
-    인물섹션 = lines.length - 1;
-  }
-  if (지명섹션 === -1) {
-    lines.push("");
-    lines.push("# 지명");
-    지명섹션 = lines.length - 1;
-  }
-  if (세계관섹션 === -1) {
-    lines.push("");
-    lines.push("# 세계관");
-    세계관섹션 = lines.length - 1;
+function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
+  const existingNames = extractExistingNames(existing);
+  const approved = items.filter((it) => it.category && it.category !== "제외");
+
+  const added: ProposedAddition[] = [];
+  let skipped = 0;
+
+  const 인물목록: string[] = [];
+  const 지명목록: string[] = [];
+
+  for (const item of approved) {
+    const name = item.name.trim();
+    if (!name) continue;
+
+    if (item.category === "인물") {
+      if (existingNames.인물.has(name) || existingNames.별칭.has(name)) {
+        skipped++;
+        continue;
+      }
+      인물목록.push(name);
+      added.push(item);
+    } else if (item.category === "지명" || item.category === "세계관") {
+      if (existingNames.지명.has(name)) {
+        skipped++;
+        continue;
+      }
+      지명목록.push(name);
+      added.push(item);
+    }
   }
 
-  if (인물추가) {
-    lines.splice(인물섹션 + 1, 0, 인물추가);
-  }
-  if (지명추가) {
-    lines.splice(지명섹션 + 1, 0, 지명추가);
-  }
-  if (세계관추가) {
-    lines.splice(세계관섹션 + 1, 0, 세계관추가);
+  if (인물목록.length === 0 && 지명목록.length === 0) {
+    return { updated: existing, added: [], skipped };
   }
 
-  return lines.join("\n");
+  const lines: string[] = existing.split(/\r?\n/);
+
+  if (인물목록.length > 0) {
+    let 인물섹션인덱스 = lines.findIndex((l) => CHARACTER_SECTION_HEADERS.has(l.trim()));
+    if (인물섹션인덱스 === -1) {
+      lines.push("");
+      lines.push("# 등장인물");
+      인물섹션인덱스 = lines.length - 1;
+    }
+    let 마지막인물인덱스 = -1;
+    for (let i = 인물섹션인덱스 + 1; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (t.startsWith("## ")) {
+        마지막인물인덱스 = i;
+      } else if (t.startsWith("# ")) {
+        break;
+      }
+    }
+    const insertAt = 마지막인물인덱스 === -1 ? 인물섹션인덱스 + 1 : 마지막인물인덱스 + 1;
+    lines.splice(insertAt, 0, ...인물목록.map((n) => `## ${n}`));
+  }
+
+  if (지명목록.length > 0) {
+    let 지명섹션인덱스 = lines.findIndex((l) => PLACE_SECTION_HEADERS.has(l.trim()));
+    if (지명섹션인덱스 === -1) {
+      lines.push("");
+      lines.push("# 지명");
+      지명섹션인덱스 = lines.length - 1;
+    }
+    let 마지막지명인덱스 = -1;
+    for (let i = 지명섹션인덱스 + 1; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (t.startsWith("- ")) {
+        마지막지명인덱스 = i;
+      } else if (t.startsWith("# ")) {
+        break;
+      }
+    }
+    const insertAt = 마지막지명인덱스 === -1 ? 지명섹션인덱스 + 1 : 마지막지명인덱스 + 1;
+    lines.splice(insertAt, 0, ...지명목록.map((n) => `- ${n}`));
+  }
+
+  return { updated: lines.join("\n"), added, skipped };
 }
