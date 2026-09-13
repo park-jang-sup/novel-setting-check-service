@@ -37,6 +37,12 @@ export interface ProposedAddition {
   note?: string;
   /** 사용자가 지정한 분류. 비워 두면 미분류 */
   category?: "인물" | "지명" | "세계관" | "제외";
+  /** Solar 정제 결과: 고유명사 판정 여부 */
+  is_proper?: boolean;
+  /** Solar 정제 결과: Solar가 부여한 분류(참조용) */
+  refine_category?: string;
+  /** Solar 정제 결과: 판정 근거 */
+  refine_reason?: string;
 }
 
 /** 검사 결과 전체 */

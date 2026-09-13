@@ -71,6 +71,104 @@ export async function runCheck(
   return await fetchCheckResult(settingsRaw, manuscript);
 }
 
+export interface RefineCandidate {
+  name: string;
+  count: number;
+  first_line: number;
+  context: string;
+  note?: string;
+  is_proper?: boolean;
+  category?: string;
+  reason?: string;
+}
+
+export interface RefineResult {
+  refined: ProposedAddition[];
+  before: number;
+  after: number;
+  errors: string[];
+}
+
+export async function refineProposedAdditions(
+  items: ProposedAddition[],
+): Promise<RefineResult> {
+  const before = items.length;
+  if (before === 0) {
+    return { refined: [], before: 0, after: 0, errors: [] };
+  }
+
+  const CHUNK = 50;
+  const chunks: ProposedAddition[][] = [];
+  for (let i = 0; i < items.length; i += CHUNK) {
+    chunks.push(items.slice(i, i + CHUNK));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const res = await fetch(`${API_BASE}/api/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposed_additions: chunk }),
+      });
+      if (!res.ok) {
+        let message = `/api/refine 요청 실패 (${res.status})`;
+        try {
+          const body =
+            (await res.json()) as { errors?: string[] };
+          if (Array.isArray(body.errors) && body.errors.length > 0) {
+            message = body.errors.join("; ");
+          }
+        } catch {
+          // json 파싱 실패 시 HTTP 상태만 사용
+        }
+        return { refined: [] as RefineCandidate[], errors: [message] };
+      }
+      const data = (await res.json()) as {
+        refined?: RefineCandidate[];
+        kept_count?: number;
+        errors?: string[];
+      };
+      return {
+        refined: Array.isArray(data.refined) ? data.refined : [],
+        errors: Array.isArray(data.errors) ? data.errors : [],
+      };
+    }),
+  );
+
+  const allErrors: string[] = results.flatMap((r) => r.errors);
+  const allRefined: RefineCandidate[] = results.flatMap((r) => r.refined);
+
+  if (allErrors.length > 0) {
+    return {
+      refined: items,
+      before,
+      after: 0,
+      errors: allErrors,
+    };
+  }
+
+  const refined: ProposedAddition[] = allRefined
+    .filter((r) => r.is_proper === true)
+    .map((r) => ({
+      name: r.name,
+      count: r.count,
+      first_line: r.first_line,
+      context: r.context,
+      note: r.note,
+      category: undefined,
+      is_proper: true,
+      refine_category: r.category,
+      refine_reason: r.reason,
+    }));
+
+  return {
+    refined,
+    before,
+    after: refined.length,
+    errors: [],
+  };
+}
+
 export function approveItems(items: ProposedAddition[]): void {
   // 승인 전에는 설정집에 반영하지 않는다(PRD: 자동 반영 없음, 승인 후 반영).
   if (typeof window === "undefined") return;

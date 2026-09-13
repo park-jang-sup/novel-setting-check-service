@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { loadSettings, saveLastResult, loadSettings as loadStored } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
+import { refineProposedAdditions, RefineResult } from "@/app/utils/parser";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -20,10 +21,19 @@ interface CollapsedGroup {
 export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [raw] = useState(loadStored());
   const [collapsed, setCollapsed] = useState<CollapsedGroup[]>([]);
+  const [refinedResult, setRefinedResult] = useState<RefineResult | null>(null);
+  const [refineInProgress, setRefineInProgress] = useState(false);
 
   useEffect(() => {
     // 저장값이 바뀔 수 있으므로 매 렌더 시점에 최신 값 반영
   }, [raw]);
+
+  const extraItems = (): ProposedAddition[] => {
+    const base = (refinedResult?.errors.length === 0 && refinedResult?.after && refinedResult?.after > 0)
+      ? refinedResult.refined
+      : result?.proposed_additions ?? [];
+    return base.filter((p) => p.category !== "제외");
+  };
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
 
@@ -53,6 +63,17 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
 
   const hasItems = counts.some((c) => c.count > 0);
 
+  const handleRefine = async () => {
+    if (!result?.proposed_additions) return;
+    setRefineInProgress(true);
+    try {
+      const r = await refineProposedAdditions(result.proposed_additions);
+      setRefinedResult(r);
+    } finally {
+      setRefineInProgress(false);
+    }
+  };
+
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -77,6 +98,47 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
               </button>
             ))}
           </div>
+
+          {/* 정제 컨트롤 */}
+          {counts[2].count > 0 && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-medium">Solar로 정리</h3>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    {refinedResult?.before ?? counts[2].count}건의 추가 제안을 Solar로 분류·정리합니다.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {refinedResult?.errors.length === 0 && refinedResult?.after !== undefined && (
+                    <span className="text-sm text-[var(--muted-foreground)]">
+                      {refinedResult.before}건 → {refinedResult.after}건
+                    </span>
+                  )}
+                  {!refineInProgress && refinedResult === null && (
+                    <button
+                      type="button"
+                      onClick={handleRefine}
+                      className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm text-white hover:bg-[var(--foreground)] transition-colors"
+                    >
+                      Solar로 정리
+                    </button>
+                  )}
+                  {refineInProgress && (
+                    <span className="text-sm text-[var(--muted-foreground)]">정리 중…</span>
+                  )}
+                </div>
+              </div>
+              {(refinedResult?.errors.length ?? 0) > 0 && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm text-[var(--muted-foreground)]">
+                  <span className="font-medium text-[var(--foreground)]">정리 중 오류</span>
+                  {refinedResult?.errors.map((e, idx) => (
+                    <p key={idx}>{e}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 설정오류 / 확인 필요 */}
           {(counts[0].count > 0 || counts[1].count > 0) && (
@@ -117,10 +179,11 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">
-                추가 제안 · {itemsInGroup("추가 제안").length}건
+                추가 제안 · {extraItems().length}건
               </h3>
+
               <div className="flex flex-col gap-2">
-                {(itemsInGroup("추가 제안") as ProposedAddition[]).map((p, idx) => (
+                {extraItems().map((p, idx) => (
                   <div
                     key={`${p.name}-${idx}`}
                     className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
@@ -129,11 +192,23 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{p.name}</span>
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {p.count}회 · 첫 등장 줄 {p.first_line}
-                          </span>
+                          {p.is_proper === true && (
+                            <span className="text-xs text-[var(--muted-foreground)]">
+                              Solar 정리됨 · {p.count}회 · 첫 등장 줄 {p.first_line}
+                            </span>
+                          )}
+                          {p.is_proper !== true && (
+                            <span className="text-xs text-[var(--muted-foreground)]">
+                              {p.count}회 · 첫 등장 줄 {p.first_line}
+                            </span>
+                          )}
                         </div>
                         <p className="mt-2 text-sm text-[var(--muted-foreground)]">{p.context}</p>
+                        {p.refine_reason && (
+                          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                            {p.refine_reason}
+                          </p>
+                        )}
                         {collapsed.some((c) => c.group === "추가 제안") ? (
                           <button
                             type="button"
