@@ -270,11 +270,20 @@ def nearest_known(name, known):
 
 
 def all_names(ledger):
-    names = set()
+    names = []
+    seen = set()
     for c in ledger["characters"]:
-        names.add(c["name"])
-        names.update(c["aliases"])
-    names.update(ledger["places"])
+        if c["name"] not in seen:
+            names.append(c["name"])
+            seen.add(c["name"])
+        for alias in c["aliases"]:
+            if alias not in seen:
+                names.append(alias)
+                seen.add(alias)
+    for p in ledger["places"]:
+        if p not in seen:
+            names.append(p)
+            seen.add(p)
     return names
 
 

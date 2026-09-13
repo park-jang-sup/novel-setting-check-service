@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { loadSettings, hasSettings, clearSettings } from "@/app/utils/storage";
+import { loadSettings, hasSettings, clearSettings, saveSettings } from "@/app/utils/storage";
 import { PresetCategory } from "@/app/utils/types";
 
 function parseCharacterNames(settingsRaw: string): { name: string; detailLines: string[] }[] {
@@ -82,6 +82,7 @@ export function SettingsPanel() {
     }
 
     setSettingsRaw(updatedLines.join("\n"));
+    saveSettings(updatedLines.join("\n"));
   };
 
   const handleNameChange = (newName: string) => {
@@ -113,7 +114,18 @@ export function SettingsPanel() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col gap-3">
+        <textarea
+          value={settingsRaw}
+          onChange={(e) => {
+            const next = e.target.value;
+            setSettingsRaw(next);
+            saveSettings(next);
+          }}
+          placeholder="설정집을 여기에 직접 붙여넣으세요."
+          className="flex-1 resize-none rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none whitespace-pre"
+          spellCheck={false}
+        />
         {characters.length === 0 ? (
           <p className="text-sm text-[var(--muted-foreground)]">
             저장한 설정집이 없습니다. 회차 원고를 넣어 추가제안 목록을 만든 뒤, 승인한 항목부터 설정집에 들어갑니다.

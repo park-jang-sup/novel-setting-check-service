@@ -149,3 +149,4 @@ __pycache__/
 .venv/
 venv/
 test/output.json
+.vercel

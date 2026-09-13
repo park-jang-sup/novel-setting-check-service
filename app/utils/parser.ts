@@ -1,48 +1,74 @@
 import { CheckResult, Violation, ProposedAddition } from "./types";
 import { loadSettings, saveSettings } from "./storage";
 
-// 실제 배포 환경에서는 여기서 scripts/check_setting.py를 호출한다(서버 측).
-// MVP 단계에서는 test/output.json을 읽은 고정 결과를 기준으로 화면 구조를 검증한다.
-// 실제 구현(C 단계)에서 스크립트 실행 결과 JSON으로 교체한다.
-// 클라이언트 컴포넌트에서 이 파일을 import할 때는 서버 전용 fs 접근을 하지 않는다.
+// 실제 검사 결과는 Vercel의 /api/check에서 돌려준다.
+// 프론트에서 이 함수를 호출하면 serverless 함수가 check_setting.py를 실행하고
+// 그 JSON을 그대로 반환한다.
+const API_BASE = "";
 
-const PLACEHOLDER_RESULT: CheckResult = {
-  summary: {
-    total: 10,
-    high: 0,
-    medium: 10,
-    low: 0,
-    listed: 10,
-    omitted_duplicates: 0,
-    proposed: 42,
-    manuscript_chars: 12263,
-  },
-  violations: [],
-  proposed_additions: [],
-  not_checked: [],
-  errors: [],
-};
+async function fetchCheckResult(settingsRaw: string, manuscript: string): Promise<CheckResult> {
+  const res = await fetch(`${API_BASE}/api/check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings: settingsRaw, manuscript }),
+  });
 
-function classifyViolation(v: Violation): "설정오류" | "확인 필요" {
-  if (v.severity === "high") return "설정오류";
-  return "확인 필요";
+  if (!res.ok) {
+    let message = `/api/check 요청 실패 (${res.status})`;
+    try {
+      const body = (await res.json()) as { errors?: string[] };
+      if (Array.isArray(body.errors) && body.errors.length > 0) {
+        message = body.errors.join("; ");
+      }
+    } catch {
+      // json 파싱 실패 시 HTTP 상태만 사용
+    }
+    return {
+      summary: {
+        total: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        listed: 0,
+        omitted_duplicates: 0,
+        proposed: 0,
+        manuscript_chars: manuscript.length,
+      },
+      violations: [],
+      proposed_additions: [],
+      not_checked: [],
+      errors: [message],
+    };
+  }
+
+  const data = (await res.json()) as CheckResult;
+  return data;
 }
 
-export function runCheck(settingsRaw: string, manuscript: string): CheckResult {
-  // 실제 구현이 들어오면 여기서 서버 측 읽기/스크립트 호출 결과를 반환한다.
-  // 현재는 화면 구조 검증용 고정 결과를 반환한다.
-  return {
-    ...PLACEHOLDER_RESULT,
-    summary: {
-      ...PLACEHOLDER_RESULT.summary,
-      manuscript_chars: manuscript.length,
-    },
-  };
-}
+export async function runCheck(
+  settingsRaw: string,
+  manuscript: string,
+): Promise<CheckResult> {
+  if (!settingsRaw.trim() || !manuscript.trim()) {
+    return {
+      summary: {
+        total: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        listed: 0,
+        omitted_duplicates: 0,
+        proposed: 0,
+        manuscript_chars: manuscript.length,
+      },
+      violations: [],
+      proposed_additions: [],
+      not_checked: [],
+      errors: ["설정집과 원고 모두 필요합니다"],
+    };
+  }
 
-export function extractProposedAdditions(settingsRaw: string, manuscript: string): ProposedAddition[] {
-  const result = runCheck(settingsRaw, manuscript);
-  return result.proposed_additions;
+  return await fetchCheckResult(settingsRaw, manuscript);
 }
 
 export function approveItems(items: ProposedAddition[]): void {
@@ -64,9 +90,9 @@ function buildUpdatedSettings(existing: string, items: ProposedAddition[]): stri
     return lines.findIndex((l) => l.trim().startsWith(name));
   };
 
-  const 인물섹션 = sectionIndex("# 등장인물");
-  const 지명섹션 = sectionIndex("# 지명");
-  const 세계관섹션 = sectionIndex("# 세계관");
+  let 인물섹션 = sectionIndex("# 등장인물");
+  let 지명섹션 = sectionIndex("# 지명");
+  let 세계관섹션 = sectionIndex("# 세계관");
 
   let 인물추가 = "";
   let 지명추가 = "";

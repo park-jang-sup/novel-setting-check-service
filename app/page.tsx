@@ -14,10 +14,11 @@ export default function Home() {
   const [manuscript, setManuscript] = useState("");
   const [result, setResult] = useState<CheckResult | null>(null);
 
-  const handleRun = () => {
+  const handleRun = async () => {
     if (!manuscript.trim()) return;
+    setResult(null);
     const settings = loadSettings();
-    const data = runCheck(settings, manuscript);
+    const data = await runCheck(settings, manuscript);
     setResult(data);
     saveLastResult(data);
   };

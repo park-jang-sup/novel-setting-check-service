@@ -9,7 +9,7 @@ export function ManuscriptInput({
 }: {
   manuscript: string;
   setManuscript: (v: string) => void;
-  onRun: () => void;
+  onRun: () => void | Promise<void>;
 }) {
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setManuscript(e.target.value);

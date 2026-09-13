@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { loadSettings, saveLastResult, loadSettings as loadStored } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
-import { CheckResult, Violation, PresetCategory } from "@/app/utils/types";
+import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -120,7 +120,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                 추가 제안 · {itemsInGroup("추가 제안").length}건
               </h3>
               <div className="flex flex-col gap-2">
-                {itemsInGroup("추가 제안").map((p, idx) => (
+                {(itemsInGroup("추가 제안") as ProposedAddition[]).map((p, idx) => (
                   <div
                     key={`${p.name}-${idx}`}
                     className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
@@ -177,7 +177,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm text-[var(--muted-foreground)]">
               <span className="font-medium text-[var(--foreground)]">오류</span>
               {result.errors.map((e, idx) => (
-                <p key={idx}>{e.message}</p>
+                <p key={idx}>{e}</p>
               ))}
             </div>
           )}

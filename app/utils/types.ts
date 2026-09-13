@@ -45,7 +45,7 @@ export interface CheckResult {
   violations: Violation[];
   proposed_additions: ProposedAddition[];
   not_checked: unknown[];
-  errors: { message: string }[];
+  errors: string[];
 }
 
 /** 분류 버튼에서 쓰는 4종류 */
