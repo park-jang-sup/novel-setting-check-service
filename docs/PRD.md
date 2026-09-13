@@ -27,7 +27,7 @@ P1
 
 **6) 스킬 매핑**
 - 기능별로 사용할 예선 스킬: novel-setting-check 1개.
-- 웹에서는 회차 검사 기능을 그 스킬의 스크립트 경로(`scripts/check_setting.py`)를 그대로 이식한다. 호출 방식과 실행 위치는 구현 단계(C)에서 확정한다.
+- 웹에서는 회차 검사 기능을 Vercel 파이썬 서버리스 함수(`api/check.py`)로 실행한다. 실제 스크립트는 `skills/novel-setting-check/scripts/check_setting.py`를 그대로 쓴다. 원본 스크립트는 한 글자도 고치지 않는다. 임시 파일로 실행하는 것은 원본이 받는 입력이 파일 경로이기 때문이다.
 - 아래 5개는 그대로 유지한다.
   ① 검출 5종: age_conflict / ability_candidate / timeline_reverse / name_variant / proposed_additions
   ② 설정집 마크다운 형식: `# 등장인물` / `# 지명` / `# 시간선` 섹션, 인물 필드는 별칭·나이·소속·불가·비고
