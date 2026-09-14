@@ -201,6 +201,11 @@ def _build_prompt(settings_text, manuscript_text, rule_findings):
     lines.append(
         "  - 최대 5건까지만 출력하라. 확실하지 않은 것은 넣지 마라."
     )
+    lines.append(
+        "  - 검토를 마친 뒤 충돌이 아니라고 판단한 항목(부정·제외·부적합·제외 사유 등)은 "
+        "JSON에 담지 마라. 최종 JSON의 conflicts 배열에는 실제 충돌만 넣고, "
+        "제외한 이유나 버린 후보는 절대 넣지 마라."
+    )
     lines.append("")
     lines.append(
         "근거 규칙: 각 충돌 항목의 evidence는 반드시 원고에 실제 존재하는 "
@@ -361,6 +366,48 @@ def _evidence_line_in_manuscript(evidence: str, manuscript_text: str) -> int:
     if pos < 0:
         return 0
     return manuscript_text.count("\n", 0, pos) + 1
+
+
+def _item_is_negated(item):
+    """Solar가 '충돌이 아님/제외/부적합' 판정을 내린 후보인지 검사한다.
+
+    프롬프트에서 금지해도 LLM이 가끔 부정 판정 항목을 conflicts에 섞는 경우가 있어,
+    클라이언트 신뢰를 막는 안전장치로 둔다.
+
+    주의: subject/detail만 본다. context는 원고 발췌라서 "아니라고" 같은 표현이
+    원고에 원래 있을 수 있으므로 Neg 판정 판별에 쓰면 안 된다.
+    """
+    if not isinstance(item, dict):
+        return False
+    texts = []
+    for key in ("subject", "detail"):
+        val = item.get(key)
+        if isinstance(val, str):
+            texts.append(val)
+    blob = " ".join(texts)
+    blob_norm = _norm(blob)
+    if not blob_norm:
+        return False
+
+    # 부정·제외·부적합 판정 징후
+    patterns = [
+        "충돌이 아니",
+        "아니므로 제외",
+        "아니므로",
+        "아니라고",
+        "아니라는",
+        "해당하지 않",
+        "부적합",
+        "제외한다",
+        "제외 사유",
+        "제외 대상",
+        "불일치가 아니",
+        "충돌로 보지 않",
+    ]
+    for p in patterns:
+        if p in blob_norm:
+            return True
+    return False
 
 
 # ─────────────────────── 중복 제거 (규칙 findings 기준) ───────────────────────
@@ -626,6 +673,7 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
     # 3) 근거 검증 + type 정규화
     valid_with_norm_type = []
     invalid_evidence_items = []
+    negated_items = []
 
     for item in conflicts:
         evidence = item.get("evidence") or ""
@@ -639,6 +687,9 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
                     "evidence": evidence,
                 }
             )
+            continue
+        if _item_is_negated(item):
+            negated_items.append(item)
             continue
         # type은 아직 솔라 type일 수 있으니 규칙 type으로 변환해 둔다
         item["_rule_type"] = _rule_type(item.get("type"))
@@ -675,6 +726,7 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
         "after_dedup": len(out_violations),
         "dropped_rule_dup": len(dropped_dup),
         "invalid_evidence": len(invalid_evidence_items),
+        "dropped_negated": len(negated_items),
     }
 
     dropped = [
@@ -682,6 +734,8 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
     ] + [
         {"reason": "rule_duplicate", "item": d["item"], "matched_rule": d["matched_rule"]}
         for d in dropped_dup
+    ] + [
+        {"reason": "solar_negated", "item": it} for it in negated_items
     ]
 
     return (
