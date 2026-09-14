@@ -439,7 +439,9 @@ export function isPlaceName(name: string, settingsRaw: string): boolean {
 /**
  * 별칭 등록 결과를 반환한다.
  *
- * - alias가 속한 인물 블록을 찾는다(등록명이 인물 이름이거나 이미 별칭인 경우 모두).
+ * - alias(별칭으로 추가할 이름)가 속한 인물 블록을 ownerLookupName 기준으로 찾는다.
+ *   - ownerLookupName이 인물 이름이면 해당 인물 블록,
+ *   - ownerLookupName이 이미 별칭이면 그 별칭을 가진 인물 블록.
  * - 해당 인물 블록의 `- 별칭:` 줄에 alias를 추가한다(없으면 줄 생성).
  * - alias가 인물 이름이면 added=false, 별칭이면 added=true.
  * - alias가 지명이면 error 반환.
@@ -453,6 +455,7 @@ export interface RegisterAliasResult {
 
 export function registerAlias(
   alias: string,
+  ownerLookupName: string,
   settingsRaw: string,
 ): RegisterAliasResult {
   const target = alias.trim();
@@ -464,8 +467,8 @@ export function registerAlias(
     return { updated: settingsRaw, added: false, ownerName: null, error: "지명은 별칭으로 등록할 수 없습니다" };
   }
 
-  // 인물 이름이자 별칭으로도 쓰이지 않는 이름이면 인물 블록으로 간주
-  const owner = findCharacterOwner(target, settingsRaw);
+  // 인물 블록 찾기: ownerLookupName(등록명) 기준
+  const owner = findCharacterOwner(ownerLookupName.trim(), settingsRaw);
   if (!owner) {
     return { updated: settingsRaw, added: false, ownerName: null, error: "해당 이름의 인물 블록을 찾을 수 없습니다" };
   }

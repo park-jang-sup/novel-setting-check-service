@@ -387,10 +387,11 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                         ) : (
                           <button
                             type="button"
+                            disabled={!registeredName || !v.subject.trim()}
                             onClick={async () => {
-                              if (!registeredName) return;
+                              if (!registeredName || !v.subject.trim()) return;
                               try {
-                                const updated = registerAlias(registeredName, raw);
+                                const updated = registerAlias(v.subject, registeredName, raw);
                                 saveSettings(updated.updated);
                                 window.dispatchEvent(new CustomEvent("settings-changed"));
                                 setRemovedRuleKeys((prev) => new Set(prev).add(key));
@@ -398,7 +399,11 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                                 setRuleActionError(String(e));
                               }
                             }}
-                            className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                            className={`rounded-md border px-3 py-1 text-xs font-medium text-white transition-colors ${
+                              !registeredName || !v.subject.trim()
+                                ? "bg-[var(--muted)]/40 border-[var(--border)] text-[var(--muted-foreground)] cursor-not-allowed"
+                                : "bg-[var(--accent)] border-[var(--accent)] hover:bg-[var(--foreground)]"
+                            }`}
                           >
                             별칭 등록
                           </button>
