@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { loadSettings, saveLastResult, loadSettings as loadStored } from "@/app/utils/storage";
+import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
-import { refineProposedAdditions, RefineResult, approveItems } from "@/app/utils/parser";
+import { refineProposedAdditions, RefineResult, approveItems, runConflicts } from "@/app/utils/parser";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -75,10 +75,45 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     }
   };
 
+  const handleSolarConflicts = async () => {
+    if (!result) return;
+    setSolarFetching(true);
+    setSolarError(null);
+    try {
+      const manuscriptText = loadLastManuscript();
+      if (!manuscriptText.trim()) {
+        setSolarError("저장된 원고가 없어서 Solar 검사를 실행할 수 없습니다.");
+        return;
+      }
+      const res = await runConflicts(
+        loadSettings(),
+        manuscriptText,
+        result.violations ?? [],
+      );
+      if (res.errors && res.errors.length > 0) {
+        setSolarError(res.errors.join("; "));
+        return;
+      }
+      setSolarViolations(res.violations ?? []);
+    } finally {
+      setSolarFetching(false);
+    }
+  };
+
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">검사 결과</h2>
+        {result && (
+          <button
+            type="button"
+            onClick={handleSolarConflicts}
+            disabled={solarFetching}
+            className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm text-white hover:bg-[var(--foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {solarFetching ? "Solar 확인 중…" : "Solar로 설정오류 찾기"}
+          </button>
+        )}
       </div>
 
       {result ? (
