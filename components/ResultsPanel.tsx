@@ -211,25 +211,34 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "확인 필요" && counts[1].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">확인 필요 · {counts[1].count}건</h3>
-              {(result?.violations ?? []).filter((v) => toGroup(v) === "확인 필요").map((v, idx) => (
-                <div key={`${v.line}-${v.subject}-${idx}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                        <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
-                          {v.type}
-                        </span>
-                        <span>줄 {v.line}</span>
+              {(() => {
+                const ruleItems = (result?.violations ?? []).filter((v) => toGroup(v) === "확인 필요");
+                const allItems = [...ruleItems, ...solarViolations];
+                return allItems.map((v, idx) => (
+                  <div key={`${idx}-${v.line}-${v.subject}-${v.source ?? "rule"}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {v.source === "solar" && (
+                          <span className="rounded border border-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] uppercase tracking-wide">
+                            Solar
+                          </span>
+                        )}
+                        <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                          <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
+                            {v.type}
+                          </span>
+                          <span>줄 {v.line}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-medium">{v.subject}</p>
+                        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
+                        <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
+                          {v.context}
+                        </pre>
                       </div>
-                      <p className="mt-2 text-sm font-medium">{v.subject}</p>
-                      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
-                      <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
-                        {v.context}
-                      </pre>
                     </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           )}
 
