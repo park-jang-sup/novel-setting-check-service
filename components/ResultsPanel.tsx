@@ -21,24 +21,44 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [pendingItems, setPendingItems] = useState<ProposedAddition[]>([]);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
-  // 결과가 바뀔 때 제안 목록을 화면 전용 상태로 초기화
+  // 솔라로 설정충돌 추가 탐색 결과 (source="solar"인 violations)
+  const [solarViolations, setSolarViolations] = useState<Violation[]>([]);
+  const [solarFetching, setSolarFetching] = useState(false);
+  const [solarError, setSolarError] = useState<string | null>(null);
+
+  // 결과가 바뀔 때 제안 목록과 솔라 결과를 화면 전용 상태로 초기화
   useEffect(() => {
     if (!result) {
       setPendingItems([]);
       setApprovalMessage(null);
+      setSolarViolations([]);
+      setSolarError(null);
       return;
     }
     setPendingItems(result.proposed_additions ?? []);
+    setSolarViolations([]);
+    setSolarError(null);
   }, [result]);
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
+
+  /** 규칙(스크립트) violations만 그룹별로 나눈다. 솔라 결과는 여기 포함되지 않는다. */
+  function ruleViolationsForGroup(g: Group): Violation[] {
+    if (!result) return [];
+    const v = result.violations ?? [];
+    if (g === "설정오류") return v.filter((x) => x.severity === "high");
+    if (g === "확인 필요") return v.filter((x) => x.severity !== "high");
+    return [];
+  }
 
   const counts = groups.map((g) => ({
     group: g,
     count:
       g === "추가 제안"
         ? pendingItems.filter((p) => p.category !== "제외").length
-        : (result?.violations ?? []).filter((v) => toGroup(v) === g).length,
+        : g === "설정오류"
+          ? ruleViolationsForGroup(g).length
+          : ruleViolationsForGroup(g).length + solarViolations.length,
   }));
 
   const handleRefine = async () => {

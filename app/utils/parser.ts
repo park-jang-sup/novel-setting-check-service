@@ -71,6 +71,83 @@ export async function runCheck(
   return await fetchCheckResult(settingsRaw, manuscript);
 }
 
+export interface ConflictsResult {
+  summary: {
+    total_found: number;
+    after_dedup: number;
+    dropped_rule_dup: number;
+    invalid_evidence: number;
+  };
+  violations: Violation[];
+  dropped: unknown[];
+  errors: string[];
+}
+
+/**
+ * /api/conflicts 호출: 솔라(solar-pro4)로 규칙(script)이 놓친 설정 충돌을 추가 찾는다.
+ * rule_findings는 이미 runCheck로 얻은 CheckResult.violations를 그대로 전달한다.
+ * 반환 violation에는 source="solar"가 붙어 있어 ResultsPanel에서 규칙 결과와 구분한다.
+ */
+export async function runConflicts(
+  settingsRaw: string,
+  manuscript: string,
+  ruleViolations: Violation[],
+): Promise<ConflictsResult> {
+  if (!settingsRaw.trim() || !manuscript.trim()) {
+    return {
+      summary: {
+        total_found: 0,
+        after_dedup: 0,
+        dropped_rule_dup: 0,
+        invalid_evidence: 0,
+      },
+      violations: [],
+      dropped: [],
+      errors: ["설정집과 원고 모두 필요합니다"],
+    };
+  }
+
+  const res = await fetch(`${API_BASE}/api/conflicts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      settings_text: settingsRaw,
+      manuscript_text: manuscript,
+      rule_findings: {
+        summary: {},
+        violations: ruleViolations,
+        proposed_additions: [],
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    let message = `/api/conflicts 요청 실패 (${res.status})`;
+    try {
+      const body = (await res.json()) as { errors?: string[] };
+      if (Array.isArray(body.errors) && body.errors.length > 0) {
+        message = body.errors.join("; ");
+      }
+    } catch {
+      // json 파싱 실패 시 HTTP 상태만 사용
+    }
+    return {
+      summary: {
+        total_found: 0,
+        after_dedup: 0,
+        dropped_rule_dup: 0,
+        invalid_evidence: 0,
+      },
+      violations: [],
+      dropped: [],
+      errors: [message],
+    };
+  }
+
+  const data = (await res.json()) as ConflictsResult;
+  return data;
+}
+
 export interface RefineCandidate {
   name: string;
   count: number;

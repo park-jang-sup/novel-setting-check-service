@@ -26,6 +26,8 @@ export interface Violation {
   detail: string;
   context: string;
   repeated?: boolean;
+  /** 출처: 규칙(script)인지 솔라(solar)인지 구분 */
+  source?: "rule" | "solar";
 }
 
 /** 추가제안 후보 항목 */
