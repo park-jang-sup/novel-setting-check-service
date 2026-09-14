@@ -23,10 +23,51 @@ function parseCharacterNames(settingsRaw: string): { name: string; detailLines: 
   return chars;
 }
 
+function parseLocations(settingsRaw: string): string[] {
+  const lines = settingsRaw.split(/\r?\n/);
+  const locations: string[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("# ")) {
+      inSection = trimmed === "# 지명";
+      continue;
+    }
+    if (inSection && trimmed.startsWith("- ")) {
+      locations.push(trimmed.slice(2).trim());
+    }
+  }
+  return locations;
+}
+
+function parseTimeline(settingsRaw: string): string[] {
+  const lines = settingsRaw.split(/\r?\n/);
+  const timeline: string[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("# ")) {
+      inSection = trimmed === "# 시간선";
+      continue;
+    }
+    if (inSection) {
+      const match = trimmed.match(/^\d+\.\s+(.+)$/);
+      if (match) {
+        timeline.push(match[1].trim());
+      }
+    }
+  }
+  return timeline;
+}
+
 
 export function SettingsPanel() {
   const [settingsRaw, setSettingsRaw] = useState(loadSettings());
   const characters = useMemo(() => parseCharacterNames(settingsRaw), [settingsRaw]);
+  const locations = useMemo(() => parseLocations(settingsRaw), [settingsRaw]);
+  const timeline = useMemo(() => parseTimeline(settingsRaw), [settingsRaw]);
 
   useEffect(() => {
     const handler = () => setSettingsRaw(loadSettings());

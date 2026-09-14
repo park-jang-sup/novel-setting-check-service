@@ -10,30 +10,48 @@ import { loadSettings, saveSettings, saveLastManuscript } from "@/app/utils/stor
 import { saveLastResult } from "@/app/utils/storage";
 import { CheckResult } from "@/app/utils/types";
 
-const SAMPLES = [
-  { label: "판타지", settings: "/samples/fantasy_settings.md", manuscript: "/samples/fantasy_manuscript.txt" },
-  { label: "현대판타지", settings: "/samples/modern_fantasy_settings.md", manuscript: "/samples/modern_fantasy_manuscript.txt" },
-  { label: "무협", settings: "/samples/martial_settings.md", manuscript: "/samples/martial_manuscript.txt" },
-  { label: "예선", settings: "/samples/prelim_settings.md", manuscript: "/samples/prelim_manuscript.txt" },
+const WORKS = [
+  { label: "판타지", settings: "/samples/fantasy_settings.md", episodes: [
+    { label: "1화", manuscript: "/samples/fantasy_manuscript.txt", fillSettings: true },
+    { label: "2화", manuscript: "/samples/fantasy_manuscript2.txt", fillSettings: false },
+  ]},
+  { label: "현대판타지", settings: "/samples/modern_fantasy_settings.md", episodes: [
+    { label: "1화", manuscript: "/samples/modern_fantasy_manuscript.txt", fillSettings: true },
+  ]},
+  { label: "무협", settings: "/samples/martial_settings.md", episodes: [
+    { label: "1화", manuscript: "/samples/martial_manuscript.txt", fillSettings: true },
+  ]},
+  { label: "예선", settings: "/samples/prelim_settings.md", episodes: [
+    { label: "1화", manuscript: "/samples/prelim_manuscript.txt", fillSettings: true },
+  ]},
 ];
 
-async function loadSample(sample: (typeof SAMPLES)[number], setManuscript: (v: string) => void) {
-  const [settingsRes, manuscriptRes] = await Promise.all([
-    fetch(sample.settings),
-    fetch(sample.manuscript),
-  ]);
+type Episode = (typeof WORKS)[number]["episodes"][number];
 
-  if (!settingsRes.ok || !manuscriptRes.ok) {
-    throw new Error("샘플 파일을 불러오지 못했습니다");
+async function loadEpisode(work: (typeof WORKS)[number], episode: Episode, setManuscript: (v: string) => void) {
+  if (episode.fillSettings) {
+    const [settingsRes, manuscriptRes] = await Promise.all([
+      fetch(work.settings),
+      fetch(episode.manuscript),
+    ]);
+    if (!settingsRes.ok || !manuscriptRes.ok) {
+      throw new Error("샘플 파일을 불러오지 못했습니다");
+    }
+    const settingsText = (await settingsRes.text());
+    const manuscriptText = (await manuscriptRes.text());
+    saveSettings(settingsText);
+    window.dispatchEvent(new CustomEvent("settings-changed"));
+    saveLastManuscript(manuscriptText);
+    setManuscript(manuscriptText);
+  } else {
+    const res = await fetch(episode.manuscript);
+    if (!res.ok) {
+      throw new Error("원고 파일을 불러오지 못했습니다");
+    }
+    const manuscriptText = (await res.text());
+    saveLastManuscript(manuscriptText);
+    setManuscript(manuscriptText);
   }
-
-  const settingsText = (await settingsRes.text());
-  const manuscriptText = (await manuscriptRes.text());
-
-  saveSettings(settingsText);
-  saveLastManuscript(manuscriptText);
-  window.dispatchEvent(new CustomEvent("settings-changed"));
-  setManuscript(manuscriptText);
 }
 
 async function loadEpisodeManuscript(
@@ -52,6 +70,7 @@ async function loadEpisodeManuscript(
 export default function Home() {
   const [manuscript, setManuscript] = useState("");
   const [result, setResult] = useState<CheckResult | null>(null);
+  const [isOpen, setIsOpen] = useState<string | null>(null);
 
   const handleRun = async () => {
     if (!manuscript.trim()) return;
@@ -62,24 +81,16 @@ export default function Home() {
     saveLastResult(data);
   };
 
-  const handleLoadSample = useCallback(
-    async (sample: (typeof SAMPLES)[number]) => {
+  const handleLoadEpisode = useCallback(
+    async (work: (typeof WORKS)[number], episode: Episode) => {
       try {
-        await loadSample(sample, setManuscript);
+        await loadEpisode(work, episode, setManuscript);
       } catch (e) {
-        console.error("[Home] 샘플 로드 실패", e);
+        console.error("[Home] 에피소드 로드 실패", e);
       }
     },
     [setManuscript],
   );
-
-  const handleLoadEpisode2 = useCallback(async () => {
-    try {
-      await loadEpisodeManuscript("/samples/fantasy_manuscript2.txt", setManuscript);
-    } catch (e) {
-      console.error("[Home] 2화 원고 로드 실패", e);
-    }
-  }, [setManuscript]);
 
   return (
     <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 max-w-7xl mx-auto">
@@ -90,25 +101,52 @@ export default function Home() {
           <p className="text-sm text-[var(--muted-foreground)]">
             버튼을 누르면 설정집과 회차가 한 번에 채워집니다. 검사하려면 아래 원고창에서 검사하기를 누르세요.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {SAMPLES.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => handleLoadSample(s)}
-                className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--card)] hover:border-[var(--accent)]"
-              >
-                {s.label}
-              </button>
-            ))}
-            <div className="w-px bg-[var(--border)] self-stretch" />
-            <button
-              type="button"
-              onClick={handleLoadEpisode2}
-              className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/20"
-            >
-            판타지 2화
-            </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              {WORKS.map((w) => (
+                <button
+                  key={w.label}
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(w.label);
+                  }}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:border-[var(--accent)] ${
+                    isOpen === w.label
+                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                      : "border-[var(--border)] bg-[var(--card)]/80 hover:bg-[var(--card)]"
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+            {isOpen && (() => {
+              const work = WORKS.find((w) => w.label === isOpen);
+              if (!work) return null;
+              return (
+                <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3">
+                  {work.episodes.map((ep) => (
+                    <button
+                      key={ep.label}
+                      type="button"
+                      onClick={() => handleLoadEpisode(work, ep)}
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                        ep.fillSettings
+                          ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)] hover:bg-[var(--card)]"
+                          : "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                      }`}
+                    >
+                      {ep.label}
+                    </button>
+                  ))}
+                  <p className="w-full text-xs text-[var(--muted-foreground)] mt-1">
+                    {work.episodes.find((e) => e.fillSettings === false)
+                      ? "2화는 설정집을 채우지 않고 원고만 불러옵니다. (1화에서 승인해둔 설정집으로 검사)"
+                      : "설정집과 원고를 함께 불러옵니다."}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </section>
