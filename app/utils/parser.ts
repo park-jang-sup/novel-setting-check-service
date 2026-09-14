@@ -395,3 +395,252 @@ function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
 
   return { updated: lines.join("\n"), added, skipped };
 }
+
+/**
+ * `detail`에서 "등록명 'XX'와 유사한 표기입니다" 형식의 등록명을 추출한다.
+ * 예: check_setting.py의 name_variant detail.
+ */
+export function extractRegisteredNameFromDetail(detail: string): string | null {
+  const m = detail.match(/등록명\s+'([^']+)'/u);
+  return m ? m[1] : null;
+}
+
+/**
+ * name이 설정집에서 지명 섹션(# 지명 / # 장소)에 등록되어 있으면 true.
+ */
+export function isPlaceName(name: string, settingsRaw: string): boolean {
+  let section: "characters" | "places" | null = null;
+  const target = name.trim();
+  for (const raw of settingsRaw.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("# ")) {
+      if (CHARACTER_SECTION_HEADERS.has(line)) {
+        section = "characters";
+      } else if (PLACE_SECTION_HEADERS.has(line)) {
+        section = "places";
+      } else {
+        section = null;
+      }
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      continue;
+    }
+    if (section === "places") {
+      const m = line.match(/^\s*-\s+(.+)$/);
+      if (m && m[1].trim() === target) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * 별칭 등록 결과를 반환한다.
+ *
+ * - alias가 속한 인물 블록을 찾는다(등록명이 인물 이름이거나 이미 별칭인 경우 모두).
+ * - 해당 인물 블록의 `- 별칭:` 줄에 alias를 추가한다(없으면 줄 생성).
+ * - alias가 인물 이름이면 added=false, 별칭이면 added=true.
+ * - alias가 지명이면 error 반환.
+ */
+export interface RegisterAliasResult {
+  updated: string;
+  added: boolean;
+  ownerName: string | null;
+  error?: string;
+}
+
+export function registerAlias(
+  alias: string,
+  settingsRaw: string,
+): RegisterAliasResult {
+  const target = alias.trim();
+  if (!target) {
+    return { updated: settingsRaw, added: false, ownerName: null, error: "별칭 이름이 비어 있습니다" };
+  }
+
+  if (isPlaceName(target, settingsRaw)) {
+    return { updated: settingsRaw, added: false, ownerName: null, error: "지명은 별칭으로 등록할 수 없습니다" };
+  }
+
+  // 인물 이름이자 별칭으로도 쓰이지 않는 이름이면 인물 블록으로 간주
+  const owner = findCharacterOwner(target, settingsRaw);
+  if (!owner) {
+    return { updated: settingsRaw, added: false, ownerName: null, error: "해당 이름의 인물 블록을 찾을 수 없습니다" };
+  }
+
+  const lines: string[] = settingsRaw.split(/\r?\n/);
+  const characterBlock = findCharacterBlockLines(lines, owner.blockIndex);
+  if (!characterBlock) {
+    return { updated: settingsRaw, added: false, ownerName: null, error: "인물 블록 라인을 찾지 못했습니다" };
+  }
+
+  const existingNames = extractExistingNames(settingsRaw);
+  const alreadyExists = existingNames.인물.has(target) || existingNames.별칭.has(target);
+
+  let updatedBlock: string[];
+  if (characterBlock.별칭 !== undefined) {
+    const currentAliases = characterBlock.별칭
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (currentAliases.includes(target)) {
+      return { updated: settingsRaw, added: false, ownerName: owner.name, error: undefined };
+    }
+    currentAliases.push(target);
+    const newAliasLine = `- 별칭: ${currentAliases.join(", ")}`;
+    updatedBlock = characterBlock.lines.map((l) => (l === characterBlock.별칭 ? newAliasLine : l));
+  } else {
+    // `- 별칭:` 줄이 아예 없으면 첫 번째 필드 줄 앞에 삽입
+    const insertIndex = characterBlock.firstFieldLineIndex;
+    const newAliasLine = `- 별칭: ${target}`;
+    updatedBlock = [
+      ...characterBlock.lines.slice(0, insertIndex),
+      newAliasLine,
+      ...characterBlock.lines.slice(insertIndex),
+    ];
+  }
+
+  const blockStart = owner.blockIndex;
+  const blockEnd = blockStart + characterBlock.lines.length;
+  const newLines = [
+    ...lines.slice(0, blockStart),
+    ...updatedBlock,
+    ...lines.slice(blockEnd),
+  ];
+
+  return {
+    updated: newLines.join("\n"),
+    added: !alreadyExists,
+    ownerName: owner.name,
+    error: undefined,
+  };
+}
+
+interface CharacterBlockLines {
+  lines: string[];
+  별칭: string | undefined;
+  firstFieldLineIndex: number;
+}
+
+/**
+ * blockIndex부터 다음 ## 또는 # 섹션 머리글 전까지의 인물 블록 라인을 추출한다.
+ * 반환값은 블록 라인과, 기존 `- 별칭:` 줄, 첫 필드 줄 인덱스를 포함한다.
+ */
+function findCharacterBlockLines(
+  lines: string[],
+  blockIndex: number,
+): CharacterBlockLines | null {
+  const start = blockIndex;
+  const linesCollected: string[] = [];
+  let 별칭: string | undefined = undefined;
+  let firstFieldLineIndex = -1;
+
+  for (let i = start; i < lines.length; i++) {
+    const raw = lines[i];
+    const t = raw.trim();
+    if (t.startsWith("# ")) {
+      break;
+    }
+    if (t.startsWith("## ")) {
+      if (i > start) break;
+    }
+    linesCollected.push(raw);
+    if (firstFieldLineIndex === -1) {
+      const m = t.match(/^\s*-\s+([^:]+):/);
+      if (m) {
+        firstFieldLineIndex = linesCollected.length - 1;
+      }
+    }
+    const m2 = t.match(/^\s*-\s*별칭:\s*(.+)$/);
+    if (m2) {
+      별칭 = m2[1];
+    }
+  }
+
+  if (linesCollected.length === 0) return null;
+  return { lines: linesCollected, 별칭, firstFieldLineIndex };
+}
+
+/**
+ * 설정집에서 인물 이름이나 별칭으로 인물 블록을 찾는다.
+ * 반환: { name: 인물 이름, blockIndex: ## 줄 인덱스 } | null
+ */
+export interface CharacterOwner {
+  name: string;
+  blockIndex: number;
+}
+
+export function findCharacterOwner(
+  name: string,
+  settingsRaw: string,
+): CharacterOwner | null {
+  const target = name.trim();
+  if (!target) return null;
+
+  const existingNames = extractExistingNames(settingsRaw);
+  if (existingNames.인물.has(target)) {
+    // 인물 이름으로 블록 인덱스 찾기
+    return findCharacterBlockByValue(linesOf(settingsRaw), (l) => {
+      const m = l.match(/^\s*##\s+(.+)$/);
+      return m ? m[1].trim() === target : false;
+    });
+  }
+
+  if (existingNames.별칭.has(target)) {
+    // 별칭으로 인물 찾기: 해당 별칭 줄을 가진 인물 블록의 이름
+    const lines = linesOf(settingsRaw);
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*##\s+(.+)$/);
+      if (!m) continue;
+      const blockName = m[1].trim();
+      const blockLines = collectUntilSectionOrNextCharacter(lines, i + 1);
+      for (const b of blockLines) {
+        const am = b.match(/^\s*-\s*별칭:\s*(.+)$/);
+        if (am) {
+          const aliases = am[1].split(",").map((s) => s.trim());
+          if (aliases.includes(target)) {
+            return { name: blockName, blockIndex: i };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function linesOf(text: string): string[] {
+  return text.split(/\r?\n/);
+}
+
+function collectUntilSectionOrNextCharacter(lines: string[], start: number): string[] {
+  const out: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.startsWith("# ")) {
+      break;
+    }
+    if (t.startsWith("## ")) {
+      break;
+    }
+    out.push(lines[i]);
+  }
+  return out;
+}
+
+function findCharacterBlockByValue(
+  lines: string[],
+  predicate: (line: string) => boolean,
+): CharacterOwner | null {
+  for (let i = 0; i < lines.length; i++) {
+    if (predicate(lines[i])) {
+      const m = lines[i].match(/^\s*##\s+(.+)$/);
+      if (m) {
+        return { name: m[1].trim(), blockIndex: i };
+      }
+    }
+  }
+  return null;
+}
