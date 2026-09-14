@@ -17,9 +17,13 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [raw] = useState(loadStored());
   const [activeGroup, setActiveGroup] = useState<Group>("설정오류");
   const [refinedResult, setRefinedResult] = useState<RefineResult | null>(null);
-  const [refineInProgress, setRefineInProgress] = useState(false);
   const [pendingItems, setPendingItems] = useState<ProposedAddition[]>([]);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+
+  // 전체 검토(정리 + 설정오류 찾기) 통합 상태
+  const [reviewInProgress, setReviewInProgress] = useState(false);
+  const [reviewRefineError, setReviewRefineError] = useState<string | null>(null);
+  const [reviewConflictError, setReviewConflictError] = useState<string | null>(null);
 
   // 솔라로 설정충돌 추가 탐색 결과 (source="solar"인 violations)
   const [solarViolations, setSolarViolations] = useState<Violation[]>([]);
@@ -72,43 +76,67 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             : (result?.not_checked ?? []).length,
   }));
 
-  const handleRefine = async () => {
-    if (!result?.proposed_additions) return;
-    setRefineInProgress(true);
-    try {
-      const r = await refineProposedAdditions(result.proposed_additions);
-      setRefinedResult(r);
-      if (r.errors.length === 0 && r.after !== undefined && r.after > 0) {
-        setPendingItems(r.refined);
-      }
-    } finally {
-      setRefineInProgress(false);
-    }
-  };
-
-  const handleSolarConflicts = async () => {
+  const handleFullReview = async () => {
     if (!result) return;
-    setSolarFetching(true);
-    setSolarError(null);
-    try {
-      const manuscriptText = loadLastManuscript();
-      if (!manuscriptText.trim()) {
-        setSolarError("저장된 원고가 없어서 Solar 검사를 실행할 수 없습니다.");
-        return;
-      }
-      const res = await runConflicts(
-        loadSettings(),
-        manuscriptText,
-        result.violations ?? [],
-      );
-      if (res.errors && res.errors.length > 0) {
-        setSolarError(res.errors.join("; "));
-        return;
-      }
-      setSolarViolations(res.violations ?? []);
-    } finally {
-      setSolarFetching(false);
-    }
+    setReviewInProgress(true);
+    setReviewRefineError(null);
+    setReviewConflictError(null);
+
+    // 충돌 검사 준비가 안 되면 그 항목만 오류로 남기고 정리는 그대로 진행
+    const manuscriptText = loadLastManuscript();
+    const conflictReady = manuscriptText.trim().length > 0;
+
+    await Promise.all([
+      (async () => {
+        if (!conflictReady) {
+          setReviewConflictError("저장된 원고가 없어서 Solar 검사를 실행할 수 없습니다.");
+          return;
+        }
+        try {
+          const res = await runConflicts(
+            loadSettings(),
+            manuscriptText,
+            result.violations ?? [],
+          );
+          if (res.errors && res.errors.length > 0) {
+            setReviewConflictError(res.errors.join("; "));
+          } else {
+            setSolarViolations(res.violations ?? []);
+          }
+        } catch (e) {
+          setReviewConflictError(String(e));
+        }
+      })(),
+      (async () => {
+        try {
+          if (result.proposed_additions && result.proposed_additions.length > 0) {
+            const r = await refineProposedAdditions(result.proposed_additions);
+            setRefinedResult(r);
+            if (r.errors.length > 0) {
+              setReviewRefineError(r.errors.join("; "));
+            } else if (r.after !== undefined && r.after > 0) {
+              const refinedWithCategory: ProposedAddition[] = r.refined.map(
+                (item) => {
+                  const cat = item.refine_category;
+                  const preset =
+                    cat === "인물" || cat === "지명" || cat === "세계관"
+                      ? (cat as PresetCategory)
+                      : undefined;
+                  return { ...item, category: preset };
+                },
+              );
+              setPendingItems(refinedWithCategory);
+            }
+          } else {
+            setRefinedResult({ refined: [], before: 0, after: 0, errors: [] });
+          }
+        } catch (e) {
+          setReviewRefineError(String(e));
+        }
+      })(),
+    ]);
+
+    setReviewInProgress(false);
   };
 
   return (
@@ -118,11 +146,11 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
         {result && (
           <button
             type="button"
-            onClick={handleSolarConflicts}
-            disabled={solarFetching}
+            onClick={handleFullReview}
+            disabled={reviewInProgress}
             className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm text-white hover:bg-[var(--foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {solarFetching ? "Solar 확인 중…" : "Solar로 설정오류 찾기"}
+            {reviewInProgress ? "Solar 분석 중…" : "설정집 정밀 검토"}
           </button>
         )}
       </div>
@@ -152,14 +180,14 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             })}
           </div>
 
-          {/* 정제 컨트롤 — 추가 제안 탭일 때만 표시 */}
-          {activeGroup === "추가 제안" && counts[2].count > 0 && (
+          {/* 정제 결과 요약 — 검토 실행 후 상단 표시 */}
+          {result && refinedResult !== null && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                 <div className="min-w-0">
                   <h3 className="text-sm font-medium">Solar로 정리</h3>
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                    {refinedResult?.before ?? counts[2].count}건의 추가 제안을 Solar로 분류·정리합니다.
+                    {refinedResult?.before ?? 0}건의 추가 제안을 Solar로 분류·정리했습니다.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -168,26 +196,24 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                       {refinedResult.before}건 → {refinedResult.after}건
                     </span>
                   )}
-                  {!refineInProgress && refinedResult === null && (
-                    <button
-                      type="button"
-                      onClick={handleRefine}
-                      className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm text-white hover:bg-[var(--foreground)] transition-colors"
-                    >
-                      Solar로 정리
-                    </button>
-                  )}
-                  {refineInProgress && (
-                    <span className="text-sm text-[var(--muted-foreground)]">정리 중…</span>
-                  )}
                 </div>
               </div>
-              {(refinedResult?.errors.length ?? 0) > 0 && (
-                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm text-[var(--muted-foreground)]">
+            </div>
+          )}
+
+          {/* 검토 중 발생한 오류(정리/충돌) — 각 항목별로 독립 표시 */}
+          {(reviewRefineError || reviewConflictError) && (
+            <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm">
+              {reviewRefineError && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
                   <span className="font-medium text-[var(--foreground)]">정리 중 오류</span>
-                  {refinedResult?.errors.map((e, idx) => (
-                    <p key={idx}>{e}</p>
-                  ))}
+                  <p className="text-[var(--muted-foreground)]">{reviewRefineError}</p>
+                </div>
+              )}
+              {reviewConflictError && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                  <span className="font-medium text-[var(--foreground)]">Solar 설정오류 찾기 중 오류</span>
+                  <p className="text-[var(--muted-foreground)]">{reviewConflictError}</p>
                 </div>
               )}
             </div>
