@@ -148,9 +148,13 @@ def _build_prompt(settings_text, manuscript_text, rule_findings):
     lines.append("")
     lines.append("특히 아래를 신경 써라.")
     lines.append(
-        "  - 1인칭 원고면 '나'의 나이·상태 표현도 대조 대상이다 "
-        "('스무 살', '내 나이' 같은 표현 포함). "
-        "'나'가 누군지는 원고에서 호명되는 이름을 기준으로 판단하라."
+        "  - 1인칭 원고면 '나'의 나이·상태 표현도 대조 대상이다."
+    )
+    lines.append(
+        "    나이·세·살·해 같은 숫자 표현과 열, 스물, 서른 처럼 한글로 쓴 나이 표현 모두 본다."
+    )
+    lines.append(
+        "    '나'가 누군지는 원고에서 호명되는 이름을 기준으로 판단하라."
     )
     lines.append(
         "  - 나이는 설정집에 적힌 나이와 같은 숫자를 가리키면 충돌이 아니다. "
@@ -161,8 +165,10 @@ def _build_prompt(settings_text, manuscript_text, rule_findings):
     lines.append(
         "  - 스킬·능력·아이템 이름이 얻는 장면과 쓰는 장면에서 서로 다르면 "
         "용어 불일치로 잡아라. type은 'term_mismatch'로 하고, "
-        "이것은 설정집에 없어도 찾아라. "
-        "같은 용어 쌍(예: 앞에서는 '쾌속', 뒤에서는 '질주')이 여러 번 나와도 "
+        "이것은 설정집에 없어도 찾아라."
+    )
+    lines.append(
+        "    같은 대상이 앞과 뒤에서 서로 다른 이름으로 불리는 경우가 여러 번 나와도 "
         "한 건으로 합쳐서 출력하라."
     )
     lines.append(
@@ -454,9 +460,8 @@ def _dedup_solar_violations(solar_items, rule_violations):
 
 
 def _merge_same_term_mismatch(violations, manuscript_text):
-    """같은 용어 쌍(term_mismatch)은 한 건으로 합친다.
+    """term_mismatch 유형끼리 같은 용어 쌍이면 한 건으로 합친다.
 
-    예: 앞에서는 '쾌속', 뒤에서는 '질주'로 같은 스킬이 불리는 경우.
     - type이 'term_mismatch'인 항목만 대상.
     - subject가 같고 detail에서 가리키는 용어 쌍이 같은 건들을 병합.
     - 병합 시 가장 앞선 줄 번호를 사용하고, context는 evidence들의
