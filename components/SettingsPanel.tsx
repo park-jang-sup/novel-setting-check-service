@@ -164,6 +164,34 @@ export function SettingsPanel() {
                 </li>
               );
             })}
+            {locations.length > 0 && (
+              <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="text-base font-medium text-[var(--foreground)]">
+                    지명
+                  </div>
+                  <ul className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
+                    {locations.map((loc, i) => (
+                      <li key={i}>{loc}</li>
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            )}
+            {timeline.length > 0 && (
+              <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="text-base font-medium text-[var(--foreground)]">
+                    시간선
+                  </div>
+                  <ol className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
+                    {timeline.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ol>
+                </div>
+              </li>
+            )}
           </ul>
         )}
       </div>
