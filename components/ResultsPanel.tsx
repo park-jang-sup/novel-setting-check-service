@@ -380,16 +380,12 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {aliasDisabledReason ? (
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            별칭 등록 불가: {aliasDisabledReason}
-                          </span>
-                        ) : (
+                        {registeredName && !isPlace && (
                           <button
                             type="button"
-                            disabled={!registeredName || !v.subject.trim()}
+                            disabled={!v.subject.trim()}
                             onClick={async () => {
-                              if (!registeredName || !v.subject.trim()) return;
+                              if (!v.subject.trim()) return;
                               try {
                                 const updated = registerAlias(v.subject, registeredName, raw);
                                 saveSettings(updated.updated);
@@ -400,7 +396,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                               }
                             }}
                             className={`rounded-md border px-3 py-1 text-xs font-medium text-white transition-colors ${
-                              !registeredName || !v.subject.trim()
+                              !v.subject.trim()
                                 ? "bg-[var(--muted)]/40 border-[var(--border)] text-[var(--muted-foreground)] cursor-not-allowed"
                                 : "bg-[var(--accent)] border-[var(--accent)] hover:bg-[var(--foreground)]"
                             }`}
@@ -415,7 +411,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                           }}
                           className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
                         >
-                          무시
+                          확인함
                         </button>
                       </div>
                     </div>
