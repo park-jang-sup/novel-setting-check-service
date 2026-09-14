@@ -37,7 +37,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     group: g,
     count:
       g === "추가 제안"
-        ? pendingItems.length
+        ? pendingItems.filter((p) => p.category !== "제외").length
         : (result?.violations ?? []).filter((v) => toGroup(v) === g).length,
   }));
 
@@ -181,7 +181,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "추가 제안" && counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">
-                추가 제안 · {pendingItems.length}건
+                추가 제안 · {counts[2].count}건
               </h3>
 
               {approvalMessage && (
@@ -257,9 +257,10 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                             : "") +
                           ` (총 ${totalRemoved}건 처리)`
                       );
-                      setPendingItems((prev) =>
-                        prev.filter((p) => p.category !== "제외")
+                      setPendingItems(
+                        prev => prev.filter((p) => !p.category)
                       );
+                      window.dispatchEvent(new CustomEvent("settings-changed"));
                     }}
                     className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
                   >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { loadSettings } from "@/app/utils/storage";
 
 function parseCounts(settingsRaw: string) {
@@ -46,7 +46,14 @@ function parseCounts(settingsRaw: string) {
 }
 
 export function CoveragePanel() {
-  const settingsRaw = loadSettings();
+  const [settingsRaw, setSettingsRaw] = useState(loadSettings());
+
+  useEffect(() => {
+    const handler = () => setSettingsRaw(loadSettings());
+    window.addEventListener("settings-changed", handler);
+    return () => window.removeEventListener("settings-changed", handler);
+  }, []);
+
   const counts = useMemo(() => parseCounts(settingsRaw), [settingsRaw]);
 
   const hasData = counts.인물 > 0 || counts.지명 > 0 || counts.시간선 > 0;

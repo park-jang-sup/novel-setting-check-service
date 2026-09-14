@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { loadSettings, hasSettings, clearSettings, saveSettings } from "@/app/utils/storage";
 function parseCharacterNames(settingsRaw: string): { name: string; detailLines: string[] }[] {
   const chars: { name: string; detailLines: string[] }[] = [];
@@ -27,6 +27,12 @@ function parseCharacterNames(settingsRaw: string): { name: string; detailLines: 
 export function SettingsPanel() {
   const [settingsRaw, setSettingsRaw] = useState(loadSettings());
   const characters = useMemo(() => parseCharacterNames(settingsRaw), [settingsRaw]);
+
+  useEffect(() => {
+    const handler = () => setSettingsRaw(loadSettings());
+    window.addEventListener("settings-changed", handler);
+    return () => window.removeEventListener("settings-changed", handler);
+  }, []);
 
   const handleInit = () => {
     clearSettings();
