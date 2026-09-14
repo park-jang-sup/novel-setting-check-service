@@ -25,6 +25,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [solarViolations, setSolarViolations] = useState<Violation[]>([]);
   const [solarFetching, setSolarFetching] = useState(false);
   const [solarError, setSolarError] = useState<string | null>(null);
+  const [solarDecisions, setSolarDecisions] = useState<Record<string, "pending" | "confirmed" | "removed">>({});
 
   // 결과가 바뀔 때 제안 목록과 솔라 결과를 화면 전용 상태로 초기화
   useEffect(() => {
@@ -33,6 +34,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
       setApprovalMessage(null);
       setSolarViolations([]);
       setSolarError(null);
+      setSolarDecisions({});
       return;
     }
     setPendingItems(result.proposed_additions ?? []);
@@ -41,6 +43,10 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   }, [result]);
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
+
+  function solarKey(v: Violation): string {
+    return `${v.line}-${v.subject}-${v.type}`;
+  }
 
   /** 규칙(스크립트) violations만 그룹별로 나눈다. 솔라 결과는 여기 포함되지 않는다. */
   function ruleViolationsForGroup(g: Group): Violation[] {
@@ -57,9 +63,12 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
       g === "추가 제안"
         ? pendingItems.filter((p) => p.category !== "제외").length
         : g === "설정오류"
-          ? ruleViolationsForGroup(g).length
+          ? ruleViolationsForGroup(g).length +
+              solarViolations.filter(
+                (v) => solarDecisions[solarKey(v)] !== "removed",
+              ).length
           : g === "확인 필요"
-            ? ruleViolationsForGroup(g).length + solarViolations.length
+            ? ruleViolationsForGroup(g).length
             : (result?.not_checked ?? []).length,
   }));
 
@@ -188,25 +197,100 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "설정오류" && counts[0].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">설정오류 · {counts[0].count}건</h3>
-              {(result?.violations ?? []).filter((v) => toGroup(v) === "설정오류").map((v, idx) => (
-                <div key={`${v.line}-${v.subject}-${idx}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                        <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
-                          {v.type}
-                        </span>
-                        <span>줄 {v.line}</span>
+
+              {(result?.violations ?? [])
+                .filter((v) => toGroup(v) === "설정오류")
+                .map((v, idx) => (
+                  <div
+                    key={`rule-${v.line}-${v.subject}-${idx}`}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                          <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
+                            {v.type}
+                          </span>
+                          <span>줄 {v.line}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-medium">{v.subject}</p>
+                        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
+                        <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
+                          {v.context}
+                        </pre>
                       </div>
-                      <p className="mt-2 text-sm font-medium">{v.subject}</p>
-                      <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
-                      <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
-                        {v.context}
-                      </pre>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+
+              {solarViolations
+                .filter((v) => solarDecisions[solarKey(v)] !== "removed")
+                .map((v, idx) => {
+                  const decision = solarDecisions[solarKey(v)];
+                  const pending = decision === "pending" || decision === undefined;
+
+                  return (
+                    <div
+                      key={`solar-${solarKey(v)}-${idx}`}
+                      className="rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded border border-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] uppercase tracking-wide">
+                              Solar
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                            <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
+                              {v.type}
+                            </span>
+                            <span>줄 {v.line}</span>
+                          </div>
+                          <p className="mt-2 text-sm font-medium">{v.subject}</p>
+                          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
+                          <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
+                            {v.context}
+                          </pre>
+                          {pending && (
+                            <p className="mt-2 text-xs text-[var(--muted-foreground)] italic">
+                              확정 전입니다. 맞으면 확정을, 틀리면 제거를 누르세요.
+                            </p>
+                          )}
+                        </div>
+
+                        {pending && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolarDecisions((prev) => ({
+                                  ...prev,
+                                  [solarKey(v)]: "confirmed",
+                                }));
+                              }}
+                              className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                            >
+                              확정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolarDecisions((prev) => ({
+                                  ...prev,
+                                  [solarKey(v)]: "removed",
+                                }));
+                              }}
+                              className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+                            >
+                              제거
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
 
@@ -215,16 +299,10 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
               <h3 className="text-sm font-medium">확인 필요 · {counts[1].count}건</h3>
               {(() => {
                 const ruleItems = (result?.violations ?? []).filter((v) => toGroup(v) === "확인 필요");
-                const allItems = [...ruleItems, ...solarViolations];
-                return allItems.map((v, idx) => (
+                return ruleItems.map((v, idx) => (
                   <div key={`${idx}-${v.line}-${v.subject}-${v.source ?? "rule"}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        {v.source === "solar" && (
-                          <span className="rounded border border-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] uppercase tracking-wide">
-                            Solar
-                          </span>
-                        )}
                         <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                           <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
                             {v.type}
@@ -342,7 +420,15 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
               <h3 className="text-sm font-medium">판정 불가 · {counts[3].count}건</h3>
               <ul className="flex flex-col gap-2 text-sm text-[var(--muted-foreground)]">
                 {((result?.not_checked ?? []) as string[]).map((item) => (
-                  <li key={item}>{item}를 검사하지 못했습니다</li>
+                  <li key={item}>
+                    {item === "age"
+                      ? "나이는 설정집에 나이가 적힌 인물이 없어 대조하지 못했습니다"
+                      : item === "ability"
+                        ? "능력은 설정집에 '불가'로 적힌 능력이 있는 인물이 없어 대조하지 못했습니다"
+                        : item === "timeline"
+                          ? "시간선은 원고에 나온 시간선이 2개 미만이라 순서를 대조하지 못했습니다"
+                          : `${item}를 검사하지 못했습니다`}
+                  </li>
                 ))}
               </ul>
             </div>
