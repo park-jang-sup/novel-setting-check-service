@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript } from "@/app/utils/storage";
+import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript, saveSettings } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
-import { refineProposedAdditions, RefineResult, approveItems, runConflicts } from "@/app/utils/parser";
+import { refineProposedAdditions, RefineResult, approveItems, runConflicts, extractRegisteredNameFromDetail, registerAlias, isPlaceName } from "@/app/utils/parser";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -30,6 +30,8 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [solarFetching, setSolarFetching] = useState(false);
   const [solarError, setSolarError] = useState<string | null>(null);
   const [solarDecisions, setSolarDecisions] = useState<Record<string, "pending" | "confirmed" | "removed">>({});
+  const [removedRuleKeys, setRemovedRuleKeys] = useState<Set<string>>(new Set());
+  const [ruleActionError, setRuleActionError] = useState<string | null>(null);
 
   // 결과가 바뀔 때 제안 목록과 솔라 결과를 화면 전용 상태로 초기화
   useEffect(() => {
@@ -40,6 +42,8 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
       setSolarViolations([]);
       setSolarError(null);
       setSolarDecisions({});
+      setRemovedRuleKeys(new Set());
+      setRuleActionError(null);
       return;
     }
     setPendingItems(result.proposed_additions ?? []);
@@ -48,6 +52,8 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     setSolarViolations([]);
     setSolarError(null);
     setSolarDecisions({});
+    setRemovedRuleKeys(new Set());
+    setRuleActionError(null);
   }, [result]);
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
@@ -56,13 +62,8 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     return `${v.line}-${v.subject}-${v.type}`;
   }
 
-  /** 규칙(스크립트) violations만 그룹별로 나눈다. 솔라 결과는 여기 포함되지 않는다. */
-  function ruleViolationsForGroup(g: Group): Violation[] {
-    if (!result) return [];
-    const v = result.violations ?? [];
-    if (g === "설정오류") return v.filter((x) => x.severity === "high");
-    if (g === "확인 필요") return v.filter((x) => x.severity !== "high");
-    return [];
+  function ruleKey(v: Violation): string {
+    return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
   }
 
   const counts = groups.map((g) => ({
@@ -71,12 +72,18 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
       g === "추가 제안"
         ? pendingItems.filter((p) => p.category !== "제외").length
         : g === "설정오류"
-          ? ruleViolationsForGroup(g).length +
+          ? (result?.violations ?? [])
+              .filter((v) => v.severity === "high")
+              .filter((v) => !removedRuleKeys.has(ruleKey(v)))
+              .length +
               solarViolations.filter(
                 (v) => solarDecisions[solarKey(v)] !== "removed",
               ).length
           : g === "확인 필요"
-            ? ruleViolationsForGroup(g).length
+            ? (result?.violations ?? [])
+                .filter((v) => v.severity !== "high")
+                .filter((v) => !removedRuleKeys.has(ruleKey(v)))
+                .length
             : (result?.not_checked ?? []).length,
   }));
 
@@ -326,28 +333,89 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
 
           {activeGroup === "확인 필요" && counts[1].count > 0 && (
             <div className="flex flex-col gap-3">
+              {ruleActionError && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
+                  <span className="font-medium text-[var(--foreground)]">확인 처리 중 오류</span>
+                  <p className="text-[var(--muted-foreground)]">{ruleActionError}</p>
+                </div>
+              )}
               <h3 className="text-sm font-medium">확인 필요 · {counts[1].count}건</h3>
               {(() => {
-                const ruleItems = (result?.violations ?? []).filter((v) => toGroup(v) === "확인 필요");
-                return ruleItems.map((v, idx) => (
-                  <div key={`${idx}-${v.line}-${v.subject}-${v.source ?? "rule"}`} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                          <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
-                            {v.type}
-                          </span>
-                          <span>줄 {v.line}</span>
+                const ruleItems = (result?.violations ?? [])
+                  .filter((v) => toGroup(v) === "확인 필요")
+                  .filter((v) => !removedRuleKeys.has(ruleKey(v)));
+                return ruleItems.map((v) => {
+                  const key = ruleKey(v);
+                  const registeredName = extractRegisteredNameFromDetail(v.detail);
+                  const isPlace = registeredName ? isPlaceName(registeredName, raw) : false;
+                  const aliasDisabledReason = isPlace
+                    ? "지명은 별칭으로 등록할 수 없습니다"
+                    : registeredName
+                      ? null
+                      : "detail에서 등록명을 찾지 못했습니다";
+
+                  return (
+                    <div
+                      key={key}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                            <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
+                              {v.type}
+                            </span>
+                            <span>줄 {v.line}</span>
+                          </div>
+                          <p className="mt-2 text-sm font-medium">{v.subject}</p>
+                          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
+                          {registeredName && (
+                            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                              등록명: {registeredName}
+                            </p>
+                          )}
+                          <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
+                            {v.context}
+                          </pre>
                         </div>
-                        <p className="mt-2 text-sm font-medium">{v.subject}</p>
-                        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
-                        <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
-                          {v.context}
-                        </pre>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {aliasDisabledReason ? (
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            별칭 등록 불가: {aliasDisabledReason}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!registeredName) return;
+                              try {
+                                const updated = registerAlias(registeredName, raw);
+                                saveSettings(updated.updated);
+                                window.dispatchEvent(new CustomEvent("settings-changed"));
+                                setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                              } catch (e) {
+                                setRuleActionError(String(e));
+                              }
+                            }}
+                            className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                          >
+                            별칭 등록
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                          }}
+                          className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+                        >
+                          무시
+                        </button>
                       </div>
                     </div>
-                  </div>
-                ));
+                  );
+                });
               })()}
             </div>
           )}
