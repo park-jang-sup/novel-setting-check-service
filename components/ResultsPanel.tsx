@@ -36,14 +36,18 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     if (!result) {
       setPendingItems([]);
       setApprovalMessage(null);
+      setRefinedResult(null);
       setSolarViolations([]);
       setSolarError(null);
       setSolarDecisions({});
       return;
     }
     setPendingItems(result.proposed_additions ?? []);
+    setRefinedResult(null);
+    setApprovalMessage(null);
     setSolarViolations([]);
     setSolarError(null);
+    setSolarDecisions({});
   }, [result]);
 
   const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];

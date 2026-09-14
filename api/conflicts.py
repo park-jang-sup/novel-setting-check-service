@@ -437,6 +437,14 @@ def _dedup_solar_violations(solar_items, rule_violations):
                     matched_rule = rv
                     break
 
+            # Solar가 슬래시로 묶은 여러 이름 중 하나가 규칙 subject와 같으면 중복으로 본다
+            if not is_dup and s_type == "term_mismatch" and "/" in s_subject:
+                frags = [f.strip() for f in s_subject.split("/") if f.strip()]
+                if r_subject and (r_subject in frags or any(r_subject in f for f in frags)):
+                    is_dup = True
+                    matched_rule = rv
+                    break
+
         if is_dup:
             dropped.append(
                 _as_rule_dup_conflict(item, matched_rule or {"subject": r_subject, "type": r_type, "detail": r_detail})

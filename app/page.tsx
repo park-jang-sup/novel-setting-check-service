@@ -6,7 +6,7 @@ import { ManuscriptInput } from "@/components/ManuscriptInput";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { CoveragePanel } from "@/components/CoveragePanel";
 import { runCheck } from "@/app/utils/parser";
-import { loadSettings, saveSettings } from "@/app/utils/storage";
+import { loadSettings, saveSettings, saveLastManuscript } from "@/app/utils/storage";
 import { saveLastResult } from "@/app/utils/storage";
 import { CheckResult } from "@/app/utils/types";
 
@@ -31,7 +31,21 @@ async function loadSample(sample: (typeof SAMPLES)[number], setManuscript: (v: s
   const manuscriptText = (await manuscriptRes.text());
 
   saveSettings(settingsText);
+  saveLastManuscript(manuscriptText);
   window.dispatchEvent(new CustomEvent("settings-changed"));
+  setManuscript(manuscriptText);
+}
+
+async function loadEpisodeManuscript(
+  manuscriptPath: string,
+  setManuscript: (v: string) => void,
+) {
+  const res = await fetch(manuscriptPath);
+  if (!res.ok) {
+    throw new Error("원고 파일을 불러오지 못했습니다");
+  }
+  const manuscriptText = (await res.text());
+  saveLastManuscript(manuscriptText);
   setManuscript(manuscriptText);
 }
 
@@ -59,6 +73,14 @@ export default function Home() {
     [setManuscript],
   );
 
+  const handleLoadEpisode2 = useCallback(async () => {
+    try {
+      await loadEpisodeManuscript("/samples/fantasy_manuscript2.txt", setManuscript);
+    } catch (e) {
+      console.error("[Home] 2화 원고 로드 실패", e);
+    }
+  }, [setManuscript]);
+
   return (
     <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 max-w-7xl mx-auto">
       <section className="flex flex-col gap-4">
@@ -79,6 +101,14 @@ export default function Home() {
                 {s.label}
               </button>
             ))}
+            <div className="w-px bg-[var(--border)] self-stretch" />
+            <button
+              type="button"
+              onClick={handleLoadEpisode2}
+              className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/20"
+            >
+            판타지 2화
+            </button>
           </div>
         </div>
       </section>
