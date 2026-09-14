@@ -58,7 +58,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
         ? pendingItems.filter((p) => p.category !== "제외").length
         : g === "설정오류"
           ? ruleViolationsForGroup(g).length
-          : ruleViolationsForGroup(g).length + solarViolations.length,
+          : g === "확인 필요"
+            ? ruleViolationsForGroup(g).length + solarViolations.length
+            : (result?.not_checked ?? []).length,
   }));
 
   const handleRefine = async () => {
@@ -338,9 +340,11 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
           {activeGroup === "판정 불가" && counts[3].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">판정 불가 · {counts[3].count}건</h3>
-              <p className="text-sm text-[var(--muted-foreground)]">
-                검사하지 못한 항목이 있을 때만 표시됩니다. 현재는 검사 대상이 모두 처리되었습니다.
-              </p>
+              <ul className="flex flex-col gap-2 text-sm text-[var(--muted-foreground)]">
+                {((result?.not_checked ?? []) as string[]).map((item) => (
+                  <li key={item}>{item}를 검사하지 못했습니다</li>
+                ))}
+              </ul>
             </div>
           )}
 
