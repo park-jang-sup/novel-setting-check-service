@@ -18,6 +18,11 @@ import tempfile
 from http.server import BaseHTTPRequestHandler
 
 
+def _strip_leading_whitespace(text: str) -> str:
+    """설정집 각 줄의 앞쪽 공백만 제거한다 (원고 포맷은 보존)."""
+    return "\n".join(line.lstrip() for line in text.splitlines())
+
+
 class handler(BaseHTTPRequestHandler):
     def _send_json(self, obj: object, status: int = 200) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -75,7 +80,7 @@ class handler(BaseHTTPRequestHandler):
             with tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", suffix=".md", delete=False
             ) as sf:
-                sf.write(settings_text)
+                sf.write(_strip_leading_whitespace(settings_text))
                 settings_path = sf.name
             with tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", suffix=".txt", delete=False
@@ -106,14 +111,25 @@ class handler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
 
+        stdout = proc.stdout.strip()
         if proc.returncode != 0:
+            # check_setting.py는 실패 시에도 stderr이 아니라 stdout에
+            # JSON 오류 응답을 출력한다. 우선 그걸 파싱해 본다.
+            if stdout:
+                try:
+                    result = json.loads(stdout)
+                except json.JSONDecodeError:
+                    result = None
+                if isinstance(result, dict) and isinstance(result.get("errors"), list):
+                    self._send_json(result, status=400)
+                    return
+            # JSON을 못 잡았으면 기존 방식으로 실패 응답
             stderr_tail = proc.stderr[-500:] if proc.stderr else ""
             self._fail(
                 f"check_setting.py 실행 실패 (exit {proc.returncode}): {stderr_tail}"
             )
             return
 
-        stdout = proc.stdout.strip()
         if not stdout:
             self._fail("check_setting.py가 출력을 생성하지 않았습니다")
             return
