@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ManuscriptInput } from "@/components/ManuscriptInput";
 import { ResultsPanel } from "@/components/ResultsPanel";
@@ -84,6 +84,16 @@ export default function Home() {
   const [isOpen, setIsOpen] = useState<string | null>(null);
   const [currentEpisodeNumber, setCurrentEpisodeNumber] = useState<string>("");
   const [currentWorkLabel, setCurrentWorkLabel] = useState<string>("");
+  const [isIntroCollapsed, setIsIntroCollapsed] = useState(false);
+  const introAutocloseRef = useRef<boolean | null>(null);
+
+  // 검사 결과가 처음 렌더링될 때 설명 블록 자동 접기
+  useEffect(() => {
+    if (result !== null && introAutocloseRef.current === null) {
+      introAutocloseRef.current = true;
+      setIsIntroCollapsed(true);
+    }
+  }, [result]);
 
   const handleRun = async () => {
     if (!manuscript.trim()) return;
@@ -131,6 +141,56 @@ export default function Home() {
 
   return (
     <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 max-w-7xl mx-auto">
+      {/* 서비스 설명 블록 — 접기/펼치기, col-span-2 */}
+      <section className="col-span-1 lg:col-span-2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setIsIntroCollapsed((v) => !v)}
+            className="rounded-md px-2 py-0.5 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--accent)]"
+          >
+            {isIntroCollapsed ? "펼치기" : "접기"}
+          </button>
+        </div>
+        {!isIntroCollapsed && (
+          <div className="mt-2 space-y-3">
+            <div>
+              <h1 className="text-xl font-semibold">
+                소설 쓰다 보면 설정 관리하기 힘들다고요?
+              </h1>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                100화 넘어가니 댓글창에 오류 지적이 쏟아지나요? 그럴 때를 위해 준비했습니다!
+              </p>
+            </div>
+            <div className="space-y-3 text-sm text-[var(--foreground)]">
+              <p>
+                원고를 붙여넣고 검사하기만 누르세요. 1화의 설정과 틀린 지점을 1초 안에 찾아줍니다!
+              </p>
+              <p>
+                줄 번호와 원문까지 근거로 붙여서 깔끔하게 알려드립니다!
+              </p>
+              <p>
+                좀 더 꼼꼼히 보고 싶다고요? 규칙이 못 보는 자리는 AI가 이어받아 더 정확하게 알려줍니다.
+                소설 속 나이, 회차 사이에 바뀐 이름 스킬 같은 것들이요.
+              </p>
+              <p>
+                당신의 파트너 찾아준 내용에 승인만 해주세요. 승인한 항목은 설정집에 차곡차곡 쌓이고,
+                다음 회차 검사는 그만큼 촘촘해집니다. 설정집을 처음부터 빡빡하게 짜실 필요 없습니다.
+              </p>
+              <p>
+                설정집 짜기 귀찮으셨나요? 일일이 오류 찾기 힘드셨나요? 독자 지적이 두려우셨나요?
+              </p>
+              <p>
+                이 서비스가 그 자리를 대신 지킵니다.
+              </p>
+              <p className="text-xs text-[var(--muted-foreground)] mt-2">
+                처음이라면 아래 데모 샘플을 눌러보세요. 설정집과 원고가 한 번에 채워집니다.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="flex flex-col gap-4">
         <SettingsPanel />
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 flex flex-col gap-3">
