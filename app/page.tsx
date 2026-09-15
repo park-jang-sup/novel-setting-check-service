@@ -119,6 +119,7 @@ export default function Home() {
     async (work: (typeof WORKS)[number], episode: Episode) => {
       try {
         await loadEpisode(work, episode, setManuscript);
+        setResult(null);
         setCurrentEpisodeNumber(episode.label.replace("화", ""));
         setCurrentWorkLabel(work.label);
       } catch (e) {
