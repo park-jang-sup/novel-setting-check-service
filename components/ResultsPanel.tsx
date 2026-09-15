@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript, saveSettings } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
-import { refineProposedAdditions, RefineResult, approveAndEnrich, runConflicts, extractRegisteredNameFromDetail, registerAlias, isPlaceName } from "@/app/utils/parser";
+import { refineProposedAdditions, RefineResult, approveAndEnrich, runConflicts, extractRegisteredNameFromDetail, registerAlias, isPlaceName, isCharacterRegistered } from "@/app/utils/parser";
 
 type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
 
@@ -310,6 +310,35 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                             >
                               확정
                             </button>
+                            {!isCharacterRegistered(v.subject, loadSettings()) && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const settings = loadSettings();
+                                    const item: ProposedAddition = {
+                                      name: v.subject,
+                                      count: 1,
+                                      first_line: v.line,
+                                      context: v.context,
+                                      note: v.detail,
+                                      category: "인물",
+                                    };
+                                    await approveAndEnrich([item], settings, loadLastManuscript());
+                                    window.dispatchEvent(new CustomEvent("settings-changed"));
+                                    setSolarDecisions((prev) => ({
+                                      ...prev,
+                                      [solarKey(v)]: "removed",
+                                    }));
+                                  } catch (e) {
+                                    console.error("[Solar 추가] 실패:", e);
+                                  }
+                                }}
+                                className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                              >
+                                설정집에 추가
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {

@@ -556,6 +556,27 @@ export function isPlaceName(name: string, settingsRaw: string): boolean {
 }
 
 /**
+ * name이 설정집에서 인물 섹션(# 등장인물 / # 인물)의 ## 이름으로 등록되어 있으면 true.
+ * 별칭·필드 줄은 보지 않고 "## 이름" 줄 기준으로만 본다.
+ */
+export function isCharacterRegistered(name: string, settingsRaw: string): boolean {
+  let section: "characters" | "places" | null = null;
+  const target = name.trim();
+  for (const raw of settingsRaw.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("# ")) {
+      section = CHARACTER_SECTION_HEADERS.has(line) ? "characters" : "places";
+      continue;
+    }
+    if (section === "characters" && line.startsWith("## ")) {
+      if (line.slice(3).trim() === target) return true;
+    }
+  }
+  return false;
+}
+
+
+/**
  * 별칭 등록 결과를 반환한다.
  *
  * - alias(별칭으로 추가할 이름)가 속한 인물 블록을 ownerLookupName 기준으로 찾는다.
