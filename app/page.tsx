@@ -27,7 +27,7 @@ const WORKS = [
   { label: "무협", settings: "/samples/martial_settings.md", episodes: [
     { label: "1화", manuscript: "/samples/martial_manuscript.txt", fillSettings: true },
   ]},
-  { label: "예선", settings: "/samples/prelim_settings.md", episodes: [
+  { label: "작가원고", settings: "/samples/prelim_settings.md", episodes: [
     { label: "1화", manuscript: "/samples/prelim_manuscript.txt", fillSettings: true },
   ]},
 ];
@@ -171,10 +171,10 @@ export default function Home() {
               </p>
               <p>
                 좀 더 꼼꼼히 보고 싶다고요? 규칙이 못 보는 자리는 AI가 이어받아 더 정확하게 알려줍니다.
-                소설 속 나이, 회차 사이에 바뀐 이름 스킬 같은 것들이요.
+                1인칭으로 쓴 나이, 회차 사이에 바뀐 스킬 이름 같은 것들이요.
               </p>
               <p>
-                당신의 파트너 찾아준 내용에 승인만 해주세요. 승인한 항목은 설정집에 차곡차곡 쌓이고,
+                당신의 파트너가 찾아준 내용에 승인만 해주세요. 승인한 항목은 설정집에 차곡차곡 쌓이고,
                 다음 회차 검사는 그만큼 촘촘해집니다. 설정집을 처음부터 빡빡하게 짜실 필요 없습니다.
               </p>
               <p>
