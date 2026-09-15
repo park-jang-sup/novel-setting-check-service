@@ -168,7 +168,7 @@ export function SettingsPanel() {
               <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="text-base font-medium text-[var(--foreground)]">
-                    지명
+                    지명·용어
                   </div>
                   <ul className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
                     {locations.map((loc, i) => (

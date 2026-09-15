@@ -1,4 +1,4 @@
-import { CheckResult, Violation, ProposedAddition } from "./types";
+import { CheckResult, Violation, ProposedAddition, EnrichCandidate, EnrichResult, EnrichItem, ApprovalResult } from "./types";
 import { loadSettings, saveSettings } from "./storage";
 
 // 실제 검사 결과는 Vercel의 /api/check에서 돌려준다.
@@ -246,10 +246,6 @@ export async function refineProposedAdditions(
   };
 }
 
-export interface ApprovalResult {
-  added: ProposedAddition[];
-  skipped: number;
-}
 
 export function approveItems(items: ProposedAddition[]): ApprovalResult {
   if (typeof window === "undefined") return { added: [], skipped: 0 };
@@ -258,6 +254,75 @@ export function approveItems(items: ProposedAddition[]): ApprovalResult {
   const result = buildUpdatedSettings(settings, items);
   saveSettings(result.updated);
   return result;
+}
+
+/**
+ * 승인과 동시에 인물 필드 보강을 진행한다.
+ * - 인물로 분류된 항목만 /api/enrich로 보내서 나이/소속/별칭/비고를 채운다.
+ * - enrich 결과로 나온 인물 필드는 설정집 마크다운에 병합한다.
+ * - enrich 호출에 실패하면 기존 approveItems 동작(기준선)만 유지한다.
+ */
+export async function approveAndEnrich(
+  items: ProposedAddition[],
+  settingsRaw: string,
+  manuscriptText: string,
+): Promise<ApprovalResult> {
+  if (typeof window === "undefined") {
+    return { added: [], skipped: 0 };
+  }
+
+  // 1) 기준선 승인 처리(인물/지명 구분, 중복 확인용)
+  const settings = settingsRaw;
+  const baseResult = buildUpdatedSettings(settings, items, /*enrichedItems=*/ undefined);
+  const 인물후보 = items.filter((it) => it.category === "인물");
+
+  // 인물 후보가 없으면 enrich 진행 없이 바로 저장
+  if (인물후보.length === 0) {
+    saveSettings(baseResult.updated);
+    return baseResult;
+  }
+
+  // 2) enrich 대상 목록 구성
+  const candidates: EnrichCandidate[] = 인물후보.map((it) => ({
+    name: it.name.trim(),
+    episode: it.first_line > 0 ? it.first_line : undefined,
+  }));
+
+  let enriched: EnrichItem[] = [];
+  try {
+    const res = await fetch(`${API_BASE}/api/enrich`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        candidate_names: candidates,
+        settings_text: settings,
+        manuscript_text: manuscriptText,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { errors?: string[] };
+      const msg = body?.errors?.join("; ") ?? `/api/enrich 요청 실패 (${res.status})`;
+      console.warn("[approveAndEnrich] enrich 실패, 기준선만 저장:", msg);
+    } else {
+      const data = (await res.json()) as EnrichResult;
+      if (data.enriched && Array.isArray(data.enriched)) {
+        enriched = data.enriched;
+      }
+    }
+  } catch (e) {
+    console.warn("[approveAndEnrich] enrich 네트워크 실패, 기준선만 저장:", String(e));
+  }
+
+  // 3) 인물 후보별 enrich 정보를 반영한 설정집 갱신
+  const updated = buildUpdatedSettings(settings, items, enriched);
+
+  saveSettings(updated.updated);
+  return {
+    added: baseResult.added,
+    skipped: baseResult.skipped,
+    enrichedItems: enriched,
+  };
 }
 
 interface ExistingNames {
@@ -316,7 +381,11 @@ function extractExistingNames(text: string): ExistingNames {
   return { 인물, 별칭, 지명 };
 }
 
-function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
+function buildUpdatedSettings(
+  existing: string,
+  items: ProposedAddition[],
+  enrichedItems?: EnrichItem[],
+): { updated: string; added: ProposedAddition[]; skipped: number } {
   const existingNames = extractExistingNames(existing);
   const approved = items.filter((it) => it.category && it.category !== "제외");
 
@@ -348,13 +417,27 @@ function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
   }
 
   if (인물목록.length === 0 && 지명목록.length === 0) {
-    return { updated: existing, added: [], skipped };
+    return { updated: existing, added, skipped };
+  }
+
+  const enrichMap = new Map<string, EnrichItem>();
+  if (enrichedItems && Array.isArray(enrichedItems)) {
+    for (const item of enrichedItems) {
+      if (!item || !item.name) continue;
+      const key = item.name.trim();
+      if (!key) continue;
+      // 인물 후보 중 이미 approved된 이름만 반영 대상으로 본다
+      if (!인물목록.includes(key)) continue;
+      enrichMap.set(key, item);
+    }
   }
 
   const lines: string[] = existing.split(/\r?\n/);
 
   if (인물목록.length > 0) {
-    let 인물섹션인덱스 = lines.findIndex((l) => CHARACTER_SECTION_HEADERS.has(l.trim()));
+    let 인물섹션인덱스 = lines.findIndex(
+      (l) => CHARACTER_SECTION_HEADERS.has(l.trim()),
+    );
     if (인물섹션인덱스 === -1) {
       lines.push("");
       lines.push("# 등장인물");
@@ -369,12 +452,41 @@ function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
         break;
       }
     }
-    const insertAt = 마지막인물인덱스 === -1 ? 인물섹션인덱스 + 1 : 마지막인물인덱스 + 1;
-    lines.splice(insertAt, 0, ...인물목록.map((n) => `## ${n}`));
+    const insertAt =
+      마지막인물인덱스 === -1
+        ? 인물섹션인덱스 + 1
+        : 마지막인물인덱스 + 1;
+
+    const 인물블록줄들: string[] = [];
+    for (const n of 인물목록) {
+      인물블록줄들.push(`## ${n}`);
+      const enriched = enrichMap.get(n);
+      if (enriched && enriched.fields) {
+        const f = enriched.fields;
+        const fieldLines: string[] = [];
+        if (f.age !== undefined && f.age !== null)
+          fieldLines.push(`- 나이: ${f.age}`);
+        if (f.affiliation !== undefined && f.affiliation !== null)
+          fieldLines.push(`- 소속: ${f.affiliation}`);
+        if (
+          f.aliases &&
+          Array.isArray(f.aliases) &&
+          f.aliases.length > 0
+        ) {
+          fieldLines.push(`- 별칭: ${f.aliases.join(", ")}`);
+        }
+        if (f.notes !== undefined && f.notes !== null)
+          fieldLines.push(`- 비고: ${f.notes}`);
+        인물블록줄들.push(...fieldLines);
+      }
+    }
+    lines.splice(insertAt, 0, ...인물블록줄들);
   }
 
   if (지명목록.length > 0) {
-    let 지명섹션인덱스 = lines.findIndex((l) => PLACE_SECTION_HEADERS.has(l.trim()));
+    let 지명섹션인덱스 = lines.findIndex(
+      (l) => PLACE_SECTION_HEADERS.has(l.trim()),
+    );
     if (지명섹션인덱스 === -1) {
       lines.push("");
       lines.push("# 지명");
@@ -389,8 +501,15 @@ function buildUpdatedSettings(existing: string, items: ProposedAddition[]) {
         break;
       }
     }
-    const insertAt = 마지막지명인덱스 === -1 ? 지명섹션인덱스 + 1 : 마지막지명인덱스 + 1;
-    lines.splice(insertAt, 0, ...지명목록.map((n) => `- ${n}`));
+    const insertAt =
+      마지막지명인덱스 === -1
+        ? 지명섹션인덱스 + 1
+        : 마지막지명인덱스 + 1;
+    lines.splice(
+      insertAt,
+      0,
+      ...지명목록.map((n) => `- ${n}`),
+    );
   }
 
   return { updated: lines.join("\n"), added, skipped };
