@@ -79,6 +79,7 @@ export default function Home() {
   const [result, setResult] = useState<CheckResult | null>(null);
   const [isOpen, setIsOpen] = useState<string | null>(null);
   const [currentEpisodeNumber, setCurrentEpisodeNumber] = useState<string>("");
+  const [currentWorkLabel, setCurrentWorkLabel] = useState<string>("");
 
   const handleRun = async () => {
     if (!manuscript.trim()) return;
@@ -115,6 +116,7 @@ export default function Home() {
       try {
         await loadEpisode(work, episode, setManuscript);
         setCurrentEpisodeNumber(episode.label.replace("화", ""));
+        setCurrentWorkLabel(work.label);
       } catch (e) {
         console.error("[Home] 에피소드 로드 실패", e);
       }
@@ -132,6 +134,27 @@ export default function Home() {
             버튼을 누르면 설정집과 회차가 한 번에 채워집니다. 검사하려면 아래 원고창에서 검사하기를 누르세요.
           </p>
           <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">
+                {currentWorkLabel ? (
+                  <span className="text-[var(--accent)]">
+                    현재 불러온 샘플: {currentWorkLabel} {currentEpisodeNumber ? currentEpisodeNumber + "화" : ""}
+                  </span>
+                ) : (
+                  <span className="text-[var(--muted-foreground)]">아무 샘플도 불러오지 않았습니다</span>
+                )}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentWorkLabel("");
+                  setCurrentEpisodeNumber("");
+                }}
+                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:no-underline"
+              >
+                표시 지우기
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {WORKS.map((w) => (
                 <button
