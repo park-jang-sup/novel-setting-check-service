@@ -443,19 +443,13 @@ function buildUpdatedSettings(
       lines.push("# 등장인물");
       인물섹션인덱스 = lines.length - 1;
     }
-    let 마지막인물인덱스 = -1;
+    let sectionEndIndex = 인물섹션인덱스;
     for (let i = 인물섹션인덱스 + 1; i < lines.length; i++) {
       const t = lines[i].trim();
-      if (t.startsWith("## ")) {
-        마지막인물인덱스 = i;
-      } else if (t.startsWith("# ")) {
-        break;
-      }
+      if (t.startsWith("# ")) break;
+      sectionEndIndex = i;
     }
-    const insertAt =
-      마지막인물인덱스 === -1
-        ? 인물섹션인덱스 + 1
-        : 마지막인물인덱스 + 1;
+    const insertAt = sectionEndIndex + 1;
 
     const 인물블록줄들: string[] = [];
     for (const n of 인물목록) {
@@ -492,19 +486,13 @@ function buildUpdatedSettings(
       lines.push("# 지명");
       지명섹션인덱스 = lines.length - 1;
     }
-    let 마지막지명인덱스 = -1;
+    let sectionEndIndex = 지명섹션인덱스;
     for (let i = 지명섹션인덱스 + 1; i < lines.length; i++) {
       const t = lines[i].trim();
-      if (t.startsWith("- ")) {
-        마지막지명인덱스 = i;
-      } else if (t.startsWith("# ")) {
-        break;
-      }
+      if (t.startsWith("# ")) break;
+      sectionEndIndex = i;
     }
-    const insertAt =
-      마지막지명인덱스 === -1
-        ? 지명섹션인덱스 + 1
-        : 마지막지명인덱스 + 1;
+    const insertAt = sectionEndIndex + 1;
     lines.splice(
       insertAt,
       0,
