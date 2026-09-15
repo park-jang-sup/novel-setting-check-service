@@ -151,49 +151,41 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap gap-2">
               {WORKS.map((w) => (
-                <button
-                  key={w.label}
-                  type="button"
-                  onClick={() => {
-                    setIsOpen(w.label);
-                  }}
-                  className="rounded-lg border px-4 py-2 text-sm font-medium border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
-                >
-                  {w.label}
-                </button>
+                <div key={w.label} className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(w.label);
+                    }}
+                    className="rounded-lg border px-4 py-2 text-sm font-medium border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
+                  >
+                    {w.label}
+                  </button>
+                  {isOpen === w.label && (
+                    <div className="flex flex-col gap-2">
+                      {w.episodes.map((ep) => {
+                        const isCurrent = currentWorkLabel === w.label
+                          && currentEpisodeNumber === ep.label.replace("화", "");
+                        return (
+                          <button
+                            key={ep.label}
+                            type="button"
+                            onClick={() => handleLoadEpisode(w, ep)}
+                            className={`w-full rounded-lg border px-4 py-2 text-sm font-medium ${
+                              isCurrent
+                                ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                                : "border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
+                            }`}
+                          >
+                            {ep.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
-            {isOpen && (() => {
-              const work = WORKS.find((w) => w.label === isOpen);
-              if (!work) return null;
-              return (
-                <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3">
-                  {work.episodes.map((ep) => {
-                    const isCurrent = currentWorkLabel === work.label
-                      && currentEpisodeNumber === ep.label.replace("화", "");
-                    return (
-                      <button
-                        key={ep.label}
-                        type="button"
-                        onClick={() => handleLoadEpisode(work, ep)}
-                        className={`rounded-lg border px-4 py-2 text-sm font-medium ${
-                          isCurrent
-                            ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                            : "border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
-                        }`}
-                      >
-                        {ep.label}
-                      </button>
-                    );
-                  })}
-                  <p className="w-full text-xs text-[var(--muted-foreground)] mt-1">
-                    {work.episodes.find((e) => e.fillSettings === false)
-                      ? "2화는 설정집을 채우지 않고 원고만 불러옵니다. (1화에서 승인해둔 설정집으로 검사)"
-                      : "설정집과 원고를 함께 불러옵니다."}
-                  </p>
-                </div>
-              );
-            })()}
           </div>
         </div>
       </section>
