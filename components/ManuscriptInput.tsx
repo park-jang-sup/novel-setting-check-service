@@ -6,10 +6,14 @@ export function ManuscriptInput({
   manuscript,
   setManuscript,
   onRun,
+  currentEpisodeNumber = "",
+  onEpisodeNumberChange,
 }: {
   manuscript: string;
   setManuscript: (v: string) => void;
   onRun: () => void | Promise<void>;
+  currentEpisodeNumber?: string;
+  onEpisodeNumberChange?: (v: string) => void;
 }) {
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setManuscript(e.target.value);
@@ -35,6 +39,19 @@ export function ManuscriptInput({
         >
           지우기
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 px-3 py-2 text-sm">
+        <span className="text-[var(--muted-foreground)]">회차</span>
+        <input
+          type="number"
+          min="1"
+          value={currentEpisodeNumber}
+          onChange={(e) => onEpisodeNumberChange?.(e.target.value)}
+          className="w-16 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-center text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+          placeholder="회차"
+        />
+        <span className="text-[var(--muted-foreground)]">화</span>
       </div>
 
       <textarea

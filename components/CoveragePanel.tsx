@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { loadSettings } from "@/app/utils/storage";
+import { loadCurrentEpisodeLabel, loadEpisodeRuns, mergeEpisodeRunCurrent } from "@/app/utils/storage";
 
 function parseCounts(settingsRaw: string) {
   const characters = settingsRaw
@@ -45,16 +46,44 @@ function parseCounts(settingsRaw: string) {
   };
 }
 
+function countAddedItems(oldRaw: string, newRaw: string): number {
+  const oldCounts = parseCounts(oldRaw);
+  const newCounts = parseCounts(newRaw);
+  const addedCharacters = Math.max(0, newCounts.인물 - oldCounts.인물);
+  const addedPlaces = Math.max(0, newCounts.지명 - oldCounts.지명);
+  const addedTimeline = Math.max(0, newCounts.시간선 - oldCounts.시간선);
+  return addedCharacters + addedPlaces + addedTimeline;
+}
+
 export function CoveragePanel() {
   const [settingsRaw, setSettingsRaw] = useState(loadSettings());
+  const [prevSettingsRaw, setPrevSettingsRaw] = useState(loadSettings());
+  const [pendingAdded, setPendingAdded] = useState(0);
 
+  // 설정집이 바뀔 때 변경 전/후를 비교해 추가된 항목 수를 계산
   useEffect(() => {
-    const handler = () => setSettingsRaw(loadSettings());
+    const handler = (event: Event) => {
+      const newRaw = loadSettings();
+      const oldRaw = prevSettingsRaw;
+
+      if (oldRaw && newRaw && oldRaw !== newRaw) {
+        const added = countAddedItems(oldRaw, newRaw);
+        if (added > 0) {
+          setPendingAdded((prev) => prev + added);
+          mergeEpisodeRunCurrent({ approvedAdded: added });
+        }
+      }
+
+      setPrevSettingsRaw(newRaw);
+      setSettingsRaw(newRaw);
+    };
+
     window.addEventListener("settings-changed", handler);
     return () => window.removeEventListener("settings-changed", handler);
-  }, []);
+  }, [prevSettingsRaw]);
 
   const counts = useMemo(() => parseCounts(settingsRaw), [settingsRaw]);
+  const episodeRuns = useMemo(() => loadEpisodeRuns(), []);
 
   const hasData = counts.인물 > 0 || counts.지명 > 0 || counts.시간선 > 0;
 
@@ -76,6 +105,35 @@ export function CoveragePanel() {
         <p className="text-sm text-[var(--muted-foreground)]">
           설정집에 인물 {counts.인물}명, 지명 {counts.지명}곳, 시간선 {counts.시간선}건이 저장되어 있습니다.
         </p>
+      )}
+
+      {episodeRuns.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm">
+          <div className="text-sm font-medium">회차 기록</div>
+          {episodeRuns
+            .slice()
+            .sort((a, b) => a.checkedAt - b.checkedAt)
+            .map((run) => (
+              <div
+                key={run.label}
+                className="rounded-lg border border-[var(--border)] bg-[var(--card)]/60 px-4 py-3"
+              >
+                <span className="font-medium">{run.label}</span>
+                <span className="text-[var(--muted-foreground)]">
+                  · 설정오류 {run.errorsTotal}건
+                </span>
+                <span className="text-[var(--muted-foreground)]">
+                  · 확인 {run.mediumTotal}건
+                </span>
+                <span className="text-[var(--muted-foreground)]">
+                  · 제안 {run.proposed}건
+                </span>
+                <span className="text-[var(--muted-foreground)]">
+                  · 반영 {run.approvedAdded}건
+                </span>
+              </div>
+            ))}
+        </div>
       )}
     </section>
   );

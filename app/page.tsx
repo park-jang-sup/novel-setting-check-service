@@ -7,7 +7,13 @@ import { ResultsPanel } from "@/components/ResultsPanel";
 import { CoveragePanel } from "@/components/CoveragePanel";
 import { runCheck } from "@/app/utils/parser";
 import { loadSettings, saveSettings, saveLastManuscript } from "@/app/utils/storage";
-import { saveLastResult } from "@/app/utils/storage";
+import {
+  saveLastResult,
+  loadCurrentEpisodeLabel,
+  saveCurrentEpisodeLabel,
+  saveEpisodeRun,
+  EpisodeRun,
+} from "@/app/utils/storage";
 import { CheckResult } from "@/app/utils/types";
 
 const WORKS = [
@@ -52,6 +58,7 @@ async function loadEpisode(work: (typeof WORKS)[number], episode: Episode, setMa
     saveLastManuscript(manuscriptText);
     setManuscript(manuscriptText);
   }
+  saveCurrentEpisodeLabel(episode.label);
 }
 
 async function loadEpisodeManuscript(
@@ -71,6 +78,7 @@ export default function Home() {
   const [manuscript, setManuscript] = useState("");
   const [result, setResult] = useState<CheckResult | null>(null);
   const [isOpen, setIsOpen] = useState<string | null>(null);
+  const [currentEpisodeNumber, setCurrentEpisodeNumber] = useState<string>("");
 
   const handleRun = async () => {
     if (!manuscript.trim()) return;
@@ -79,6 +87,26 @@ export default function Home() {
     const data = await runCheck(settings, manuscript);
     setResult(data);
     saveLastResult(data);
+
+    const savedLabel = loadCurrentEpisodeLabel();
+    const number = currentEpisodeNumber.trim();
+    const label =
+      (number ? `${number}화` : "") || savedLabel || "";
+    if (label) {
+      saveCurrentEpisodeLabel(label);
+      const summary = data.summary;
+      const run: EpisodeRun = {
+        label,
+        checkedAt: Date.now(),
+        errorsTotal: summary.high,
+        mediumTotal: summary.medium,
+        proposed: summary.proposed,
+        approvedAdded: 0,
+        approvedSkipped: 0,
+        excluded: 0,
+      };
+      saveEpisodeRun(run);
+    }
   };
 
   const handleLoadEpisode = useCallback(
@@ -155,6 +183,8 @@ export default function Home() {
           manuscript={manuscript}
           setManuscript={setManuscript}
           onRun={handleRun}
+          currentEpisodeNumber={currentEpisodeNumber}
+          onEpisodeNumberChange={setCurrentEpisodeNumber}
         />
         <ResultsPanel result={result} />
         <CoveragePanel />
