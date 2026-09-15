@@ -62,11 +62,30 @@ function parseTimeline(settingsRaw: string): string[] {
   return timeline;
 }
 
+function parseWorldview(settingsRaw: string): string[] {
+  const lines = settingsRaw.split(/\r?\n/);
+  const worldview: string[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("# ")) {
+      inSection = trimmed === "# 세계관";
+      continue;
+    }
+    if (inSection && trimmed.startsWith("- ")) {
+      worldview.push(trimmed.slice(2).trim());
+    }
+  }
+  return worldview;
+}
+
 
 export function SettingsPanel() {
   const [settingsRaw, setSettingsRaw] = useState(loadSettings());
   const characters = useMemo(() => parseCharacterNames(settingsRaw), [settingsRaw]);
   const locations = useMemo(() => parseLocations(settingsRaw), [settingsRaw]);
+  const worldview = useMemo(() => parseWorldview(settingsRaw), [settingsRaw]);
   const timeline = useMemo(() => parseTimeline(settingsRaw), [settingsRaw]);
 
   useEffect(() => {
@@ -142,57 +161,66 @@ export function SettingsPanel() {
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
-            {characters.map((ch, idx) => {
-              // 값이 있는 라인만 필터링
-              const nonEmptyLines = ch.detailLines.filter((line) => {
-                const colonIdx = line.indexOf(":");
-                if (colonIdx <= 0) return false;
-                const val = line.slice(colonIdx + 1).trim();
-                return val.length > 0;
-              });
+            {/* 등장인물 섹션 */}
+            {characters.length > 0 && (
+              <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="text-base font-medium text-[var(--foreground)]">등장인물</div>
+                  <ul className="flex flex-col gap-3">
+                    {characters.map((ch, idx) => {
+                      // 값이 있는 라인만 필터링
+                      const nonEmptyLines = ch.detailLines.filter((line) => {
+                        const colonIdx = line.indexOf(":");
+                        if (colonIdx <= 0) return false;
+                        const val = line.slice(colonIdx + 1).trim();
+                        return val.length > 0;
+                      });
 
-              return (
-                <li
-                  key={idx}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <div className="text-base font-medium text-[var(--foreground)]">
-                      {ch.name}
-                    </div>
+                      return (
+                        <li
+                          key={idx}
+                          className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
+                        >
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <div className="text-base font-medium text-[var(--foreground)]">
+                              {ch.name}
+                            </div>
 
-                    {/* 값이 있는 항목만 표시 */}
-                    {nonEmptyLines.length > 0 ? (
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                        {nonEmptyLines.map((line, i) => {
-                          const colonIdx = line.indexOf(":");
-                          const field = colonIdx > 0 ? line.slice(0, colonIdx).trim() : "";
-                          const val = colonIdx > 0 ? line.slice(colonIdx + 1).trim() : "";
-                          return (
-                            <span
-                              key={`${i}-${line}`}
-                              className="text-[var(--muted-foreground)]"
-                            >
-                              {field}: {val}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-[var(--muted-foreground)]">
-                        아직 설정된 값이 없습니다.
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
+                            {/* 값이 있는 항목만 표시 */}
+                            {nonEmptyLines.length > 0 ? (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                                {nonEmptyLines.map((line, i) => {
+                                  const colonIdx = line.indexOf(":");
+                                  const field = colonIdx > 0 ? line.slice(0, colonIdx).trim() : "";
+                                  const val = colonIdx > 0 ? line.slice(colonIdx + 1).trim() : "";
+                                  return (
+                                    <span
+                                      key={`${i}-${line}`}
+                                      className="text-[var(--muted-foreground)]"
+                                    >
+                                      {field}: {val}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-[var(--muted-foreground)]">
+                                아직 설정된 값이 없습니다.
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </li>
+            )}
+            {/* 지명 섹션 */}
             {locations.length > 0 && (
               <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <div className="text-base font-medium text-[var(--foreground)]">
-                    지명·용어
-                  </div>
+                  <div className="text-base font-medium text-[var(--foreground)]">지명</div>
                   <ul className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
                     {locations.map((loc, i) => (
                       <li key={i}>{loc}</li>
@@ -201,12 +229,24 @@ export function SettingsPanel() {
                 </div>
               </li>
             )}
+            {/* 세계관 섹션 */}
+            {worldview.length > 0 && (
+              <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="text-base font-medium text-[var(--foreground)]">세계관</div>
+                  <ul className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
+                    {worldview.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            )}
+            {/* 시간선 섹션 */}
             {timeline.length > 0 && (
               <li className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <div className="text-base font-medium text-[var(--foreground)]">
-                    시간선
-                  </div>
+                  <div className="text-base font-medium text-[var(--foreground)]">시간선</div>
                   <ol className="flex flex-col gap-1 text-sm text-[var(--muted-foreground)]">
                     {timeline.map((item, i) => (
                       <li key={i}>{item}</li>

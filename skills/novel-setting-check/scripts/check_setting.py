@@ -46,6 +46,7 @@ SECTION_ALIASES = {
     "인물": "characters",
     "지명": "places",
     "장소": "places",
+    "세계관": "places",
     "시간선": "timeline",
     "연표": "timeline",
 }

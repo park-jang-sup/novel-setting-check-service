@@ -332,7 +332,7 @@ interface ExistingNames {
 }
 
 const CHARACTER_SECTION_HEADERS = new Set(["# 등장인물", "# 인물"]);
-const PLACE_SECTION_HEADERS = new Set(["# 지명", "# 장소"]);
+const PLACE_SECTION_HEADERS = new Set(["# 지명", "# 장소", "# 세계관"]);
 
 function extractExistingNames(text: string): ExistingNames {
   const 인물 = new Set<string>();
@@ -394,6 +394,7 @@ function buildUpdatedSettings(
 
   const 인물목록: string[] = [];
   const 지명목록: string[] = [];
+  const 세계관목록: string[] = [];
 
   for (const item of approved) {
     const name = item.name.trim();
@@ -406,17 +407,24 @@ function buildUpdatedSettings(
       }
       인물목록.push(name);
       added.push(item);
-    } else if (item.category === "지명" || item.category === "세계관") {
+    } else if (item.category === "지명") {
       if (existingNames.지명.has(name)) {
         skipped++;
         continue;
       }
       지명목록.push(name);
       added.push(item);
+    } else if (item.category === "세계관") {
+      if (existingNames.지명.has(name)) {
+        skipped++;
+        continue;
+      }
+      세계관목록.push(name);
+      added.push(item);
     }
   }
 
-  if (인물목록.length === 0 && 지명목록.length === 0) {
+  if (인물목록.length === 0 && 지명목록.length === 0 && 세계관목록.length === 0) {
     return { updated: existing, added, skipped };
   }
 
@@ -477,9 +485,40 @@ function buildUpdatedSettings(
     lines.splice(insertAt, 0, ...인물블록줄들);
   }
 
+  if (세계관목록.length > 0) {
+    let 세계관섹션인덱스 = lines.findIndex(
+      (l) => l.trim() === "# 세계관",
+    );
+    if (세계관섹션인덱스 === -1) {
+      const 시간선인덱스 = lines.findIndex(
+        (l) => l.trim() === "# 시간선" || l.trim() === "# 연표",
+      );
+      if (시간선인덱스 === -1) {
+        lines.push("");
+        lines.push("# 세계관");
+        세계관섹션인덱스 = lines.length - 1;
+      } else {
+        lines.splice(시간선인덱스, 0, "# 세계관", "");
+        세계관섹션인덱스 = 시간선인덱스;
+      }
+    }
+    let sectionEndIndex = 세계관섹션인덱스;
+    for (let i = 세계관섹션인덱스 + 1; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (t.startsWith("# ")) break;
+      sectionEndIndex = i;
+    }
+    const insertAt = sectionEndIndex + 1;
+    lines.splice(
+      insertAt,
+      0,
+      ...세계관목록.map((n) => `- ${n}`),
+    );
+  }
+
   if (지명목록.length > 0) {
     let 지명섹션인덱스 = lines.findIndex(
-      (l) => PLACE_SECTION_HEADERS.has(l.trim()),
+      (l) => l.trim() === "# 지명" || l.trim() === "# 장소",
     );
     if (지명섹션인덱스 === -1) {
       lines.push("");
