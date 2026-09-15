@@ -114,6 +114,7 @@ export default function Home() {
     async (work: (typeof WORKS)[number], episode: Episode) => {
       try {
         await loadEpisode(work, episode, setManuscript);
+        setCurrentEpisodeNumber(episode.label.replace("화", ""));
       } catch (e) {
         console.error("[Home] 에피소드 로드 실패", e);
       }
