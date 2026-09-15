@@ -355,6 +355,226 @@ def check_age(text, ledger, violations):
                 })
 
 
+def check_age_context(text, ledger, violations):
+    """문단·문장 맥락을 보고 나이 표현의 주체를 추정해 설정집 나이와 비교한다.
+
+    check_age(WINDOW 기반)가 잡지 못하는 사례를 보완한다.
+    주체 연결 순서: ① 같은 문장 → ② 소유격 신호 + 직전 문장 → ③ 같은 문단 앞 인물명.
+    """
+    # ── 문단·문장 분할 ──────────────────────────────────────────────
+    # 문단: 빈 줄(개행 2회 이상)로 나눈다.
+    paragraphs = re.split(r"\n\s*\n", text)
+    # 문단별 (문단 내 오프셋, 문단 텍스트, 문단 시작 위치)
+    para_info = []
+    offset = 0
+    for p in paragraphs:
+        para_info.append((offset, p, offset))
+        offset += len(p) + (2 if paragraphs.index(p) < len(paragraphs) - 1 else 0)
+    # 위 방식은 문단 경계 개행 수 변동에 취약하므로 다시 정교하게.
+    # 문단 시작 위치 계산: 문단 텍스트와 그 뒤 개행 수.
+    para_starts = []
+    pos = 0
+    for i, p in enumerate(paragraphs):
+        para_starts.append(pos)
+        pos += len(p)
+        if i < len(paragraphs) - 1:
+            # 다음 문단 앞까지의 공백 처리: \n\n 이상
+            pos += len(text[pos:pos + 10]) - len(text[pos:pos + 10].lstrip("\n"))
+            # 실제로는 다음 문단 앞 공백 전체를 건너뛰어야 함.
+            # 간단히: 다음 문단 전 개행까지 이동.
+            j = pos
+            while j < len(text) and text[j] == "\n":
+                j += 1
+            pos = j
+
+    # 문장 분할 헬퍼: 문단 내 위치 → 문장 내 위치, 문장 텍스트, 문장 시작 오프셋(문단 내)
+    # 더 정확히: 문단 텍스트를 문장 리스트로. 문장 분할은 . ? ! 기준.
+    def split_sentences_v2(para_text):
+        """문장 리스트. 각 문장: (문장 텍스트, 문단 내 시작 오프셋, 문단 내 끝 오프셋)."""
+        # . ? ! 뒤에서 공백 또는 끝을 기준으로 나눈다.
+        sents = []
+        i = 0
+        n = len(para_text)
+        while i < n:
+            m = re.search(r"[.?!]", para_text[i:])
+            if not m:
+                # 남은 조각
+                rest = para_text[i:].strip()
+                if rest:
+                    sents.append((rest, i, n))
+                break
+            end = i + m.start() + 1  # 구분자 포함 끝
+            sent = para_text[i:end].strip()
+            if sent:
+                sents.append((sent, i, end))
+            i = end
+            # 구분자 뒤 공백 건너뛰음 — para_text_local 기준, 개행 포함
+            while i < n and para_text[i] in " \t\n":
+                i += 1
+        return sents
+
+    # ── 대상 나이 표현 추출 ─────────────────────────────────────────
+    ages = find_ages(text)
+    if not ages:
+        return
+
+    known_names = all_names(ledger)
+    # 인물별 나이 매핑 (나이 있는 캐릭터만)
+    char_age = {}
+    for c in ledger["characters"]:
+        if c["age"] is not None:
+            char_age[c["name"]] = c["age"]
+            for alias in c["aliases"]:
+                char_age[alias] = c["age"]
+
+    # 이미 check_age가 올린 position 목록
+    existing_positions = {v["line"] for v in violations if v["type"] == "age_conflict"}
+
+    # 일반명사 목록 (③에서 배제용)
+    COMMON_NOUNS = [
+        "청년", "사람", "남자", "여자", "아이", "소년", "소녀",
+        "엄마", "아빠", "아저씨", "아줌마",
+    ]
+    COMMON_NOUN_RE = re.compile(
+        r"(" + "|".join(re.escape(n) for n in COMMON_NOUNS) + r")"
+    )
+
+    # 소유격·지시대명사 신호
+    PRONOUN_RE = re.compile(
+        r"(그의|그녀의|그는|그가|그를|그녀는|그녀가|그녀를)"
+    )
+
+    for value, age_pos in ages:
+        # ── 5-수정: 앞 60 / 뒤 20 안에 등록 이름이 있으면 건너뛴다 ──
+        window = text[max(0, age_pos - AGE_WINDOW_BEFORE):age_pos + AGE_WINDOW_AFTER]
+        if any(name in window for name in known_names):
+            continue
+
+        # ── 중복 방지: 같은 line(위치)에 check_age가 이미 올렸으면 스킵 ──
+        age_line = line_of(text, age_pos)
+        if age_line in existing_positions:
+            continue
+
+        # ── 문단 찾기 ──
+        para_idx = None
+        para_start = None
+        para_text_local = None
+        for idx, ps in enumerate(para_starts):
+            pe = para_starts[idx + 1] if idx + 1 < len(para_starts) else len(text)
+            if ps <= age_pos < pe:
+                para_idx = idx
+                para_start = ps
+                para_text_local = text[ps:pe]
+                break
+        if para_idx is None:
+            continue
+
+        # 문단 내 나이 표현 위치
+        age_in_para = age_pos - para_start
+
+        # 문단 내 문장 분할
+        sentences = split_sentences_v2(para_text_local)
+
+        # 나이 표현이 속한 문장 찾기
+        age_sent_idx = None
+        age_sent_text = None
+        age_sent_start = None
+        age_sent_end = None
+        for si, (sent_text, ss, se) in enumerate(sentences):
+            if ss <= age_in_para < se:
+                age_sent_idx = si
+                age_sent_text = sent_text
+                age_sent_start = ss
+                age_sent_end = se
+                break
+        if age_sent_idx is None:
+            continue
+
+        # ── ① 같은 문장 인물명 ──
+        # 나이 표현 위치보다 앞쪽에서 가장 가까운 설정집 인물명/별칭.
+        best_subject = None
+        best_pos = -1
+        for name in known_names:
+            for m in re.finditer(re.escape(name), para_text_local):
+                abs_pos = m.start()
+                if abs_pos < age_in_para and abs_pos > best_pos:
+                    # 그 이름이 나이 표현 문장에 속하는지 확인
+                    # 문장 경계: 해당 위치가 age_sent_start~age_sent_end 사이
+                    if age_sent_start <= abs_pos < age_sent_end:
+                        best_pos = abs_pos
+                        best_subject = name
+        if best_subject:
+            ledger_age = char_age.get(best_subject)
+            if ledger_age is not None and ledger_age != value:
+                violations.append({
+                    "type": "age_conflict",
+                    "severity": "medium",
+                    "line": line_of(text, age_pos),
+                    "subject": best_subject,
+                    "detail": f"설정집 {ledger_age}세, 본문 {value}세 (주체 추정: 같은 문장)",
+                    "context": context_of(text, age_pos, 6),
+                })
+            continue
+
+        # ── ② 소유격 신호 → 직전 문장 ──
+        if PRONOUN_RE.search(age_sent_text):
+            if age_sent_idx == 0:
+                # 문단 첫 문장이면 연결 실패 → ③ 안 감
+                continue
+            prev_sent_text = sentences[age_sent_idx - 1][0]
+            # 직전 문장에서 마지막으로 등장하는 설정집 인물명
+            prev_subject = None
+            prev_pos = -1
+            for name in known_names:
+                for m in re.finditer(re.escape(name), para_text_local):
+                    abs_pos = m.start()
+                    # 직전 문장 범위: sentences[age_sent_idx-1]의 start~end
+                    prev_ss = sentences[age_sent_idx - 1][1]
+                    prev_se = sentences[age_sent_idx - 1][2]
+                    if prev_ss <= abs_pos < prev_se and abs_pos > prev_pos:
+                        prev_pos = abs_pos
+                        prev_subject = name
+            if prev_subject:
+                ledger_age = char_age.get(prev_subject)
+                if ledger_age is not None and ledger_age != value:
+                    violations.append({
+                        "type": "age_conflict",
+                        "severity": "medium",
+                        "line": line_of(text, age_pos),
+                        "subject": prev_subject,
+                        "detail": f"설정집 {ledger_age}세, 본문 {value}세 (주체 추정: 대명사)",
+                        "context": context_of(text, age_pos, 6),
+                    })
+            # 소유격 신호가 감지됐으면 연결 성공/실패와 무관하게 ③으로 넘어가지 않음
+            continue
+
+        # ── ③ 같은 문단 앞 인물명 (소유격 없고, 일반명사 없을 때만) ──
+        if COMMON_NOUN_RE.search(age_sent_text):
+            # 일반명사 있으면 C 건너뜀 → IV
+            continue
+
+        # 같은 문단 안에서 나이 표현보다 앞에 나온 마지막 설정집 인물명
+        ctx_subject = None
+        ctx_pos = -1
+        for name in known_names:
+            for m in re.finditer(re.escape(name), para_text_local):
+                abs_pos = m.start()
+                if abs_pos < age_in_para and abs_pos > ctx_pos:
+                    ctx_pos = abs_pos
+                    ctx_subject = name
+        if ctx_subject:
+            ledger_age = char_age.get(ctx_subject)
+            if ledger_age is not None and ledger_age != value:
+                violations.append({
+                    "type": "age_conflict",
+                    "severity": "medium",
+                    "line": line_of(text, age_pos),
+                    "subject": ctx_subject,
+                    "detail": f"설정집 {ledger_age}세, 본문 {value}세 (주체 추정: 주어 계승)",
+                    "context": context_of(text, age_pos, 6),
+                })
+
+
 def check_ability(text, ledger, violations):
     """'불가' 설정 키워드가 인물 근처에 등장하는지 후보를 찾는다."""
     for c in ledger["characters"]:
@@ -489,6 +709,7 @@ def main():
     not_checked = []
 
     check_age(manuscript, ledger, violations)
+    check_age_context(manuscript, ledger, violations)
     check_ability(manuscript, ledger, violations)
     check_timeline(manuscript, ledger, violations, not_checked)
     check_names(manuscript, ledger, violations, proposed)
