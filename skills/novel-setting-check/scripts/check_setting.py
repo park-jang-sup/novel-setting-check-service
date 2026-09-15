@@ -22,7 +22,7 @@ from difflib import SequenceMatcher
 
 # ─────────────────────── 상수 ───────────────────────
 CONTEXT_CHARS = 30          # 검출 지점 앞뒤로 보여줄 글자 수
-NAME_SIMILARITY_MIN = 0.7  # 표기 흔들림 판정 최소 유사도 (자모 단위 비교)
+NAME_SIMILARITY_MIN = 0.8  # 표기 흔들림 판정 최소 유사도 (자모 단위 비교)
 MIN_NAME_LEN = 2            # 고유명사 후보 최소 길이
 MAX_NAME_LEN = 6            # 고유명사 후보 최대 길이
 MIN_OCCURRENCE = 2          # 미등록 이름으로 제안할 최소 등장 횟수
