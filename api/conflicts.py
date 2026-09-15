@@ -604,6 +604,7 @@ def _dedup_solar_violations(solar_items, rule_violations):
                 "subject": item.get("subject") or "",
                 "detail": item.get("detail") or "",
                 "context": item.get("context") or "",
+                "_context": item.get("_context") or "",
                 "source": "solar",
             }
         )
@@ -678,6 +679,7 @@ def _merge_same_term_mismatch(violations, manuscript_text):
                 "subject": rep.get("subject"),
                 "detail": rep.get("detail"),
                 "context": context,
+                "_context": rep.get("_context") or "",
                 "source": "solar",
             }
         )
