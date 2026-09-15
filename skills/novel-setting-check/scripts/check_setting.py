@@ -179,6 +179,7 @@ def korean_age_to_int(token):
 def find_ages(text):
     """본문에서 나이 표현을 찾아 [(숫자, 위치)] 반환."""
     found = []
+    # ① 숫자 + 살/세/해
     for m in re.finditer(r"(\d{1,3})\s*(?:살|세|해)", text):
         nxt = text[m.end():]
         if nxt.startswith(("기", "대")):
@@ -187,8 +188,8 @@ def find_ages(text):
 
     tens = "|".join(sorted(list(KOR_TENS) + ["스무"], key=len, reverse=True))
     ones = "|".join(KOR_ONES)
-    # 정규식이 이미 (tens단)?(ones단)?\s*(살|세|해) 구조를 잡아줬으므로
-    # m.group(1)=tens, m.group(2)=ones를 그대로 써서 raw를 다시 자르지 않는다.
+
+    # ② 한글 수사(십 단위 + 선택적 일의 자리) + 살/세/해
     for m in re.finditer(rf"({tens})({ones})?\s*(?:살|세|해)", text):
         raw_tens = m.group(1) or ""
         raw_ones = m.group(2) or ""
@@ -199,7 +200,48 @@ def find_ages(text):
         value = korean_age_to_int(raw)
         if value is not None:
             found.append((value, m.start()))
-    return found
+
+    # ③ 십 단위 한글 수사 + 근처 '나이'(조사 포함), 10자 안 — 살 없어도 인정
+    # 단독 일의 자리(한·두·세·네·…)는 수사 후보에서 제외한다.
+    tens_only = rf"({tens})({ones})?"
+    for m in re.finditer(tens_only, text):
+        raw_tens = m.group(1) or ""
+        raw_ones = m.group(2) or ""
+        raw = raw_tens + raw_ones
+        if not raw_tens:            # 단독 일의 자리 → 스킵
+            continue
+        value = korean_age_to_int(raw)
+        if value is None:
+            continue
+        pos = m.start()
+        nxt = text[m.end():]
+        if nxt.startswith(("기", "대")):
+            continue                # 19세기, 5세대 등 차단
+        if m.end() < len(text) and text[m.end()].isdigit():
+            continue                # 더 큰 숫자의 일부면 스킵
+        win_start = max(0, pos - 10)
+        win_end = min(len(text), m.end() + 10)
+        win = text[win_start:win_end]
+        for n in re.finditer(r"(?<![가-힣])나이", win):
+            nai_start = win_start + n.start()
+            rest = text[nai_start + 2:]   # '나이' 뒤
+            if rest:
+                josa_m = re.match(r"[가-힣]{1,2}", rest)
+                if josa_m:
+                    josa = josa_m.group(0)
+                    # 조사는 확인만 하고 필수는 아님
+            found.append((value, pos))
+            break
+
+    # 위치(수사 시작) 기준 중복 제거 — 같은 자리 중복을 하나로
+    seen = set()
+    deduped = []
+    for val, pos in found:
+        if pos in seen:
+            continue
+        seen.add(pos)
+        deduped.append((val, pos))
+    return deduped
 
 
 # ─────────────────────── 유틸 ───────────────────────
