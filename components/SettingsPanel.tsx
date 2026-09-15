@@ -110,7 +110,29 @@ export function SettingsPanel() {
         <textarea
           value={settingsRaw}
           onChange={(e) => handleRawChange(e.target.value)}
-          placeholder="설정집을 여기에 직접 붙여넣으세요."
+          placeholder={`설정집을 여기에 직접 붙여넣으세요. 형식은 아래와 같습니다.
+
+# 등장인물
+
+## 이름
+- 나이: 24
+- 소속: 마법탑
+- 불가: 화염 마법, 검술
+- 능력: 치유, 정화, 보호막
+- 비고: 힐러. 마력85 체력65 공격30 방어60
+
+# 지명
+- 아르델 왕국
+- 북부 전선
+
+# 시간선
+1. 전쟁 시작
+2. 은빛 평원 전투
+
+값은 콜론(:) 뒤에 적습니다.
+시간선은 원고에 실제로 쓰는 표현으로 짧게 적습니다.
+세계관 설정은 # 지명 아래에 넣습니다.
+형식이 헷갈리면 아래 데모 샘플을 눌러 이 칸에 채워진 내용을 보세요.`}
           className="flex-1 resize-none rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none whitespace-pre"
           spellCheck={false}
         />
