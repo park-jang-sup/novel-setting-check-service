@@ -111,7 +111,7 @@ def _build_prompt(settings_text, manuscript_text, candidate_names):
     lines.append("대상 필드:")
     lines.append(
         "  - age: 인물 나이. 숫자는 그대로 적고, "
-        "원문에 한글 나이 표현(스물두 살, 스무 살 등)이 있으면 "
+        "원문에 한글로 쓴 나이 표현이 있으면 "
         "그 표현에 해당하는 숫자로 환산해서 적는다. "
         "숫자로 환산할 수 없으면 age는 비운다(null 또는 값 없음)."
     )
