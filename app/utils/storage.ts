@@ -21,7 +21,9 @@ export function saveSettings(value: string): void {
       localStorage.setItem(SETTINGS_KEY, value);
     } else {
       localStorage.removeItem(SETTINGS_KEY);
+      clearEpisodeRuns();
     }
+    dispatchSettingsChanged();
   } catch {
     // 무시 – 저장 실패해도 화면만 빈 상태로 남는다
   }
@@ -139,6 +141,7 @@ export function saveEpisodeRun(run: EpisodeRun): void {
       runs.push(run);
     }
     localStorage.setItem(EPISODE_RUNS_KEY, JSON.stringify(runs));
+    dispatchEpisodeRunsUpdated();
   } catch {
     // 무시
   }
@@ -162,7 +165,20 @@ export function clearEpisodeRuns(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(EPISODE_RUNS_KEY);
+    dispatchEpisodeRunsUpdated();
   } catch {
     // 무시
   }
+}
+
+// ─────────────────────── 이벤트 디스패치 ───────────────────────
+
+function dispatchSettingsChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("settings-changed"));
+}
+
+function dispatchEpisodeRunsUpdated(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("episode-runs-updated"));
 }

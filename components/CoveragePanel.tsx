@@ -96,27 +96,32 @@ export function CoveragePanel() {
 
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">커버리지</h2>
+      <h2 className="text-lg font-semibold">설정집 현황</h2>
 
       <div className="flex flex-wrap gap-4 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm">
-        <span className="font-medium">대조 {counts.인물}명 {counts.지명}곳 시간선 {counts.시간선}건</span>
+        <span className="font-medium">대조 대상 · 인물 {counts.인물}명 · 지명 {counts.지명}곳 · 시간선 {counts.시간선}건</span>
       </div>
 
       {!hasData && (
         <p className="text-sm text-[var(--muted-foreground)]">
-          아직 설정집이 비어 있습니다. 회차 원고를 넣어 추가제안 목록을 만든 뒤, 승인한 항목을 설정집에 추가하면 여기 표시됩니다.
+          아직 대조할 설정이 없습니다. 원고를 검사한 뒤 추가 제안에서 항목을 골라 설정집 반영을 누르면 여기에 쌓입니다.
         </p>
       )}
 
       {hasData && (
         <p className="text-sm text-[var(--muted-foreground)]">
-          설정집에 인물 {counts.인물}명, 지명 {counts.지명}곳, 시간선 {counts.시간선}건이 저장되어 있습니다.
+          이 항목들만 원고와 대조합니다. 설정집 반영으로 항목이 늘어나면 대조 대상도 함께 늘어납니다.
         </p>
       )}
 
       {episodeRuns.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4 text-sm">
-          <div className="text-sm font-medium">회차 기록</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">회차 기록</div>
+          </div>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            회차를 검사할 때마다 한 줄씩 쌓입니다. 앞 회차에서 승인한 설정이 다음 회차를 잡습니다.
+          </p>
           {episodeRuns
             .slice()
             .sort((a, b) => a.checkedAt - b.checkedAt)

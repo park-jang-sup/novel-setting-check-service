@@ -325,7 +325,6 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                                       category: "인물",
                                     };
                                     await approveAndEnrich([item], settings, loadLastManuscript());
-                                    window.dispatchEvent(new CustomEvent("settings-changed"));
                                     setSolarDecisions((prev) => ({
                                       ...prev,
                                       [solarKey(v)]: "removed",
@@ -376,7 +375,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                 return ruleItems.map((v) => {
                   const key = ruleKey(v);
                   const registeredName = extractRegisteredNameFromDetail(v.detail);
-                  const isPlace = registeredName ? isPlaceName(registeredName, raw) : false;
+                  const isPlace = registeredName ? isPlaceName(registeredName, loadSettings()) : false;
                   const aliasDisabledReason = isPlace
                     ? "지명은 별칭으로 등록할 수 없습니다"
                     : registeredName
@@ -416,9 +415,8 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                             onClick={async () => {
                               if (!v.subject.trim()) return;
                               try {
-                                const updated = registerAlias(v.subject, registeredName, raw);
+                                const updated = registerAlias(v.subject, registeredName, loadSettings());
                                 saveSettings(updated.updated);
-                                window.dispatchEvent(new CustomEvent("settings-changed"));
                                 setRemovedRuleKeys((prev) => new Set(prev).add(key));
                               } catch (e) {
                                 setRuleActionError(String(e));
@@ -536,7 +534,6 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                       setPendingItems(
                         prev => prev.filter((p) => !p.category)
                       );
-                      window.dispatchEvent(new CustomEvent("settings-changed"));
                     }}
                     className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
                   >
