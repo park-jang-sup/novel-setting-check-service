@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { loadSettings } from "@/app/utils/storage";
-import { loadCurrentEpisodeLabel, loadEpisodeRuns, mergeEpisodeRunCurrent } from "@/app/utils/storage";
+import { loadCurrentEpisodeLabel, loadEpisodeRuns, mergeEpisodeRunCurrent, EpisodeRun } from "@/app/utils/storage";
 
 function parseCounts(settingsRaw: string) {
   const characters = settingsRaw
@@ -79,11 +79,18 @@ export function CoveragePanel() {
     };
 
     window.addEventListener("settings-changed", handler);
-    return () => window.removeEventListener("settings-changed", handler);
+    const runsHandler = () => {
+      setEpisodeRuns(loadEpisodeRuns());
+    };
+    window.addEventListener("episode-runs-updated", runsHandler);
+    return () => {
+      window.removeEventListener("settings-changed", handler);
+      window.removeEventListener("episode-runs-updated", runsHandler);
+    };
   }, [prevSettingsRaw]);
 
   const counts = useMemo(() => parseCounts(settingsRaw), [settingsRaw]);
-  const episodeRuns = useMemo(() => loadEpisodeRuns(), []);
+  const [episodeRuns, setEpisodeRuns] = useState<EpisodeRun[]>(() => loadEpisodeRuns());
 
   const hasData = counts.인물 > 0 || counts.지명 > 0 || counts.시간선 > 0;
 

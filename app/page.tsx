@@ -106,6 +106,7 @@ export default function Home() {
         excluded: 0,
       };
       saveEpisodeRun(run);
+      window.dispatchEvent(new CustomEvent("episode-runs-updated"));
     }
   };
 
