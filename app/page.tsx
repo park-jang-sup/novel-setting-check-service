@@ -6,7 +6,7 @@ import { ManuscriptInput } from "@/components/ManuscriptInput";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { CoveragePanel } from "@/components/CoveragePanel";
 import { runCheck } from "@/app/utils/parser";
-import { loadSettings, saveSettings, saveLastManuscript } from "@/app/utils/storage";
+import { loadSettings, saveSettings, saveLastManuscript, clearEpisodeRuns } from "@/app/utils/storage";
 import {
   saveLastResult,
   loadCurrentEpisodeLabel,
@@ -45,6 +45,10 @@ async function loadEpisode(work: (typeof WORKS)[number], episode: Episode, setMa
     }
     const settingsText = (await settingsRes.text());
     const manuscriptText = (await manuscriptRes.text());
+    const currentSettings = loadSettings();
+    if (currentSettings !== settingsText) {
+      clearEpisodeRuns();
+    }
     saveSettings(settingsText);
     window.dispatchEvent(new CustomEvent("settings-changed"));
     saveLastManuscript(manuscriptText);
@@ -134,7 +138,7 @@ export default function Home() {
             버튼을 누르면 설정집과 회차가 한 번에 채워집니다. 검사하려면 아래 원고창에서 검사하기를 누르세요.
           </p>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center">
               <h3 className="text-sm font-medium text-[var(--foreground)]">
                 {currentWorkLabel ? (
                   <span className="text-[var(--accent)]">
@@ -144,16 +148,6 @@ export default function Home() {
                   <span className="text-[var(--muted-foreground)]">아무 샘플도 불러오지 않았습니다</span>
                 )}
               </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrentWorkLabel("");
-                  setCurrentEpisodeNumber("");
-                }}
-                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:no-underline"
-              >
-                표시 지우기
-              </button>
             </div>
             <div className="flex flex-wrap gap-2">
               {WORKS.map((w) => (
@@ -163,11 +157,7 @@ export default function Home() {
                   onClick={() => {
                     setIsOpen(w.label);
                   }}
-                  className={`rounded-lg border px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:border-[var(--accent)] ${
-                    isOpen === w.label
-                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                      : "border-[var(--border)] bg-[var(--card)]/80 hover:bg-[var(--card)]"
-                  }`}
+                  className="rounded-lg border px-4 py-2 text-sm font-medium border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
                 >
                   {w.label}
                 </button>
@@ -177,21 +167,25 @@ export default function Home() {
               const work = WORKS.find((w) => w.label === isOpen);
               if (!work) return null;
               return (
-                <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3">
-                  {work.episodes.map((ep) => (
-                    <button
-                      key={ep.label}
-                      type="button"
-                      onClick={() => handleLoadEpisode(work, ep)}
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium ${
-                        ep.fillSettings
-                          ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)] hover:bg-[var(--card)]"
-                          : "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                      }`}
-                    >
-                      {ep.label}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3">
+                  {work.episodes.map((ep) => {
+                    const isCurrent = currentWorkLabel === work.label
+                      && currentEpisodeNumber === ep.label.replace("화", "");
+                    return (
+                      <button
+                        key={ep.label}
+                        type="button"
+                        onClick={() => handleLoadEpisode(work, ep)}
+                        className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                          isCurrent
+                            ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                            : "border-[var(--border)] bg-[var(--card)]/80 hover:border-[var(--accent)] hover:bg-[var(--card)]"
+                        }`}
+                      >
+                        {ep.label}
+                      </button>
+                    );
+                  })}
                   <p className="w-full text-xs text-[var(--muted-foreground)] mt-1">
                     {work.episodes.find((e) => e.fillSettings === false)
                       ? "2화는 설정집을 채우지 않고 원고만 불러옵니다. (1화에서 승인해둔 설정집으로 검사)"

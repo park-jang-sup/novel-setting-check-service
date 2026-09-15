@@ -157,3 +157,12 @@ export function mergeEpisodeRunCurrent(patch: Partial<EpisodeRun>): void {
   };
   saveEpisodeRun(updated);
 }
+
+export function clearEpisodeRuns(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(EPISODE_RUNS_KEY);
+  } catch {
+    // 무시
+  }
+}
