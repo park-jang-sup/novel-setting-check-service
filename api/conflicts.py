@@ -368,6 +368,91 @@ def _evidence_line_in_manuscript(evidence: str, manuscript_text: str) -> int:
     return manuscript_text.count("\n", 0, pos) + 1
 
 
+# ─────────────────────── 문장 기준 context 절단 ───────────────────────
+
+_END_CHARS = {".", "?", "!", '"', "]"}
+
+
+def _split_sentences(text: str) -> list[str]:
+    """원고 텍스트를 문장 단위로 나눈다.
+
+    문장 끝은 마침표·물음표·느낌표·닫는 따옴표·닫는 대괄호로 본다.
+    말줄임표(...)에서는 끊지 않는다(점이 3개 이상 연속이면 하나의 덩어리로 처리).
+    """
+    n = len(text)
+    i = 0
+    cur: list[str] = []
+    out: list[str] = []
+    while i < n:
+        c = text[i]
+        cur.append(c)
+        if c == ".":
+            j = i + 1
+            k = 1
+            while j < n and text[j] == ".":
+                k += 1
+                j += 1
+            if k >= 3:
+                # 말줄임표: 첫 점은 이미 cur에 들어갔고, 나머지 점을 추가
+                for _ in range(1, k):
+                    cur.append(".")
+                i = j
+                continue
+        if c in _END_CHARS:
+            out.append("".join(cur).strip())
+            cur = []
+        i += 1
+    if cur:
+        out.append("".join(cur).strip())
+    return out
+
+
+def _evidence_context_manuscript(
+    evidence: str,
+    manuscript_text: str,
+    max_chars: int = 200,
+) -> str:
+    """evidence가 들어 있는 문장 하나와 그 앞 문장 하나를 정규 원고에서 잘라 반환한다.
+
+    - 근거 위치를 정규화 원고에서 잡고, 그 위치를 포함한 문장 하나와 직전 문장 하나를 사용한다.
+    - 최대 200자까지 사용하며, 넘으면 200자에서 자르고 말줄임표(...)를 붙인다.
+    - 증거 문장을 찾지 못하면 빈 문자열 대신 근거 문장 자체를 200자까지 보여준다.
+    - 원고 텍스트는 정규화 상태를 전제로 동작한다(공백 collapse, 개행 없음).
+    """
+    if not evidence:
+        return ""
+    ev_norm = _norm(evidence)
+    if not ev_norm:
+        return ""
+
+    if not manuscript_text:
+        ev_short = ev_norm[:max_chars].rstrip()
+        if len(ev_norm) > max_chars:
+            return ev_short + "..."
+        return ev_short
+
+    sentences = _split_sentences(manuscript_text)
+    norm_sentences = [_norm(s) for s in sentences]
+
+    idx = None
+    for i, ns in enumerate(norm_sentences):
+        if ns and ev_norm in ns:
+            idx = i
+            break
+    if idx is None:
+        ev_short = ev_norm[:max_chars].rstrip()
+        if len(ev_norm) > max_chars:
+            return ev_short + "..."
+        return ev_short
+
+    start = max(0, idx - 1)
+    chosen = sentences[start : idx + 1]
+    ctx = " ".join(chosen).strip()
+    if len(ctx) > max_chars:
+        ctx = ctx[:max_chars].rstrip() + "..."
+    return ctx
+
+
 def _item_is_negated(item):
     """Solar가 '충돌이 아님/제외/부적합' 판정을 내린 후보인지 검사한다.
 
@@ -691,10 +776,11 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
         if _item_is_negated(item):
             negated_items.append(item)
             continue
-        # type은 아직 솔라 type일 수 있으니 규칙 type으로 변환해 둔다
         item["_rule_type"] = _rule_type(item.get("type"))
         # evidence를 기준으로 실제 원고 줄 번호를 재계산한다
         item["_line"] = _evidence_line_in_manuscript(evidence, manuscript_text)
+        # Solar가 준 context 대신, 원고에서 문장 기준으로 자른 맥락을 사용한다
+        item["_context"] = _evidence_context_manuscript(evidence, manuscript_norm)
         valid_with_norm_type.append(item)
 
     # 4) 규칙 findings와 중복 제거 (근거 통과한 것만 대상)
@@ -713,7 +799,7 @@ def _process(settings_text, manuscript_text, rule_findings, api_key):
                 "line": item.get("_line") or item.get("line") or 0,
                 "subject": item.get("subject"),
                 "detail": item.get("detail"),
-                "context": item.get("context"),
+                "context": item.get("_context", ""),
                 "source": "solar",
             }
         )
