@@ -259,7 +259,7 @@ export default function Home() {
           currentEpisodeNumber={currentEpisodeNumber}
           onEpisodeNumberChange={setCurrentEpisodeNumber}
         />
-        <ResultsPanel result={result} />
+        <ResultsPanel result={result} onManuscriptChange={setManuscript} />
         <CoveragePanel />
       </section>
     </main>

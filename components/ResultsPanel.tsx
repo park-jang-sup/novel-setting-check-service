@@ -1,14 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript, saveSettings } from "@/app/utils/storage";
+import { loadSettings, saveLastResult, loadSettings as loadStored, loadLastManuscript, saveLastManuscript, saveSettings } from "@/app/utils/storage";
 import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
 import { refineProposedAdditions, RefineResult, approveAndEnrich, runConflicts, extractRegisteredNameFromDetail, registerAlias, isPlaceName, isCharacterRegistered } from "@/app/utils/parser";
 
 type Group = "설정오류" | "추가 제안" | "판정 불가";
 
-export function ResultsPanel({ result }: { result: CheckResult | null }) {
+export interface FixResult {
+  revised_manuscript: string;
+  summary: {
+    confirmed_count: number;
+    revised_length: number;
+    original_length: number;
+  };
+  changes: {
+    item_index: number;
+    subject: string;
+    change_description: string;
+    original_snippet: string;
+    revised_snippet: string;
+  }[];
+  errors: string[];
+}
+
+export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResult | null; onManuscriptChange?: (value: string) => void }) {
   const [raw] = useState(loadStored());
   const [activeGroup, setActiveGroup] = useState<Group>("설정오류");
   const [refinedResult, setRefinedResult] = useState<RefineResult | null>(null);
@@ -28,6 +45,14 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [removedRuleKeys, setRemovedRuleKeys] = useState<Set<string>>(new Set());
   const [ruleActionError, setRuleActionError] = useState<string | null>(null);
 
+  // 확정 기반 원고 수정 상태
+  const [confirmedItems, setConfirmedItems] = useState<Violation[]>([]);
+  const [fixPanelOpen, setFixPanelOpen] = useState(false);
+  const [fixResult, setFixResult] = useState<FixResult | null>(null);
+  const [fixLoading, setFixLoading] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+  const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
+
   // 결과가 바뀔 때 제안 목록과 솔라 결과를 화면 전용 상태로 초기화
   useEffect(() => {
     if (!result) {
@@ -39,6 +64,10 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
       setSolarDecisions({});
       setRemovedRuleKeys(new Set());
       setRuleActionError(null);
+      setConfirmedItems([]);
+      setFixPanelOpen(false);
+      setFixResult(null);
+      setAppliedNotice(null);
       return;
     }
     setPendingItems(result.proposed_additions ?? []);
@@ -49,6 +78,10 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     setSolarDecisions({});
     setRemovedRuleKeys(new Set());
     setRuleActionError(null);
+    setConfirmedItems([]);
+    setFixPanelOpen(false);
+    setFixResult(null);
+    setAppliedNotice(null);
   }, [result]);
 
   const loadingMessages = [
@@ -84,6 +117,66 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
 
   function ruleKey(v: Violation): string {
     return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
+  }
+
+  function violationKey(v: Violation): string {
+    return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
+  }
+
+  function toggleConfirmedItem(v: Violation) {
+    const key = violationKey(v);
+    setConfirmedItems((prev) => {
+      const exists = prev.some((p) => violationKey(p) === key);
+      if (exists) {
+        return prev.filter((p) => violationKey(p) !== key);
+      }
+      return [...prev, v];
+    });
+  }
+
+  async function openFixPanel() {
+    if (confirmedItems.length === 0) return;
+    if (!result) return;
+    const manuscriptText = loadLastManuscript();
+    if (!manuscriptText.trim()) {
+      setFixError("저장된 원고가 없어 원고 수정을 실행할 수 없습니다.");
+      return;
+    }
+    setFixLoading(true);
+    setFixError(null);
+    setFixResult(null);
+    setFixPanelOpen(true);
+    try {
+      const res = await fetch("/api/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          settings_text: loadSettings(),
+          manuscript_text: manuscriptText,
+          confirmed_items: confirmedItems.map((v) => ({
+            type: v.type,
+            subject: v.subject,
+            detail: v.detail,
+            line: v.line,
+            evidence: v.context,
+            context: v.context,
+          })),
+        }),
+      });
+      const body = (await res.json()) as FixResult;
+      if (!res.ok || body.errors && body.errors.length > 0) {
+        setFixError(body.errors?.join("; ") ?? `원고 수정 실패 (${res.status})`);
+        setFixResult(null);
+        return;
+      }
+      setFixResult(body);
+      setFixError(null);
+    } catch (e) {
+      setFixError(String(e));
+      setFixResult(null);
+    } finally {
+      setFixLoading(false);
+    }
   }
 
   const counts = groups.map((g) => ({
@@ -313,7 +406,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                         <button
                           type="button"
                           onClick={() => {
-                            setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                            toggleConfirmedItem(v);
                           }}
                           className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
                         >
@@ -427,6 +520,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                             <button
                               type="button"
                               onClick={() => {
+                                toggleConfirmedItem(v);
                                 setSolarDecisions((prev) => ({
                                   ...prev,
                                   [key]: "confirmed",
@@ -497,6 +591,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                                   ...prev,
                                   [key]: "removed",
                                 }));
+                                setConfirmedItems((prev) =>
+                                  prev.filter((p) => violationKey(p) !== key)
+                                );
                               }}
                               className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
                             >
@@ -607,6 +704,84 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             </div>
           )}
 
+          {/* 원고 수정 결과 패널 */}
+          {fixPanelOpen && fixResult && (
+            <div className="flex flex-col gap-4 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">
+                  Solar 수정 결과 · {fixResult.changes.length}건
+                </h3>
+                <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                  <span>확정 {fixResult.summary.confirmed_count}건</span>
+                  <span>수정본 {fixResult.summary.revised_length}자</span>
+                </div>
+              </div>
+
+              {fixResult.changes.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {fixResult.changes.map((ch) => (
+                    <div key={ch.item_index} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{ch.subject}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          #{ch.item_index + 1}
+                        </span>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p className="text-[var(--muted-foreground)]">{ch.change_description}</p>
+                        {ch.original_snippet && (
+                          <p className="text-xs text-[var(--muted-foreground)]">
+                            원본: {ch.original_snippet}
+                          </p>
+                        )}
+                        {ch.revised_snippet && (
+                          <p className="text-xs text-[var(--accent)]">
+                            수정: {ch.revised_snippet}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  확정된 항목에 대해 원고가 수정되었습니다. 변경된 표현이 없으면 이 메시지가 표시됩니다.
+                </p>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const manuscript = fixResult.revised_manuscript;
+                    saveLastManuscript(manuscript);
+                    if (onManuscriptChange) {
+                      onManuscriptChange(manuscript);
+                    }
+                    setConfirmedItems([]);
+                    setAppliedNotice(`원고가 바뀌었으니 다시 검사하세요.`);
+                    setFixPanelOpen(false);
+                    setFixResult(null);
+                  }}
+                  className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                >
+                  적용
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFixPanelOpen(false);
+                    setFixResult(null);
+                    setAppliedNotice(null);
+                  }}
+                  className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeGroup === "판정 불가" && counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">판정 불가 · {counts[2].count}건</h3>
@@ -623,6 +798,34 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {fixError && (
+            <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
+              <span className="font-medium text-[var(--foreground)]">원고 수정 중 오류</span>
+              <p className="text-[var(--muted-foreground)]">{fixError}</p>
+            </div>
+          )}
+
+          {appliedNotice && (
+            <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
+              <span className="font-medium text-[var(--foreground)]">반영 완료</span>
+              <p className="text-[var(--muted-foreground)]">{appliedNotice}</p>
+            </div>
+          )}
+
+          {fixError && (
+            <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
+              <span className="font-medium text-[var(--foreground)]">원고 수정 중 오류</span>
+              <p className="text-[var(--muted-foreground)]">{fixError}</p>
+            </div>
+          )}
+
+          {appliedNotice && (
+            <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
+              <span className="font-medium text-[var(--foreground)]">반영 완료</span>
+              <p className="text-[var(--muted-foreground)]">{appliedNotice}</p>
             </div>
           )}
 
