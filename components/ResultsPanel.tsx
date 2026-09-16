@@ -6,12 +6,7 @@ import { ClassificationButtons } from "@/components/ClassificationButtons";
 import { CheckResult, Violation, ProposedAddition, PresetCategory } from "@/app/utils/types";
 import { refineProposedAdditions, RefineResult, approveAndEnrich, runConflicts, extractRegisteredNameFromDetail, registerAlias, isPlaceName, isCharacterRegistered } from "@/app/utils/parser";
 
-type Group = "설정오류" | "확인 필요" | "추가 제안" | "판정 불가";
-
-function toGroup(v: Violation): Group {
-  if (v.severity === "high") return "설정오류";
-  return "확인 필요";
-}
+type Group = "설정오류" | "추가 제안" | "판정 불가";
 
 export function ResultsPanel({ result }: { result: CheckResult | null }) {
   const [raw] = useState(loadStored());
@@ -56,7 +51,32 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
     setRuleActionError(null);
   }, [result]);
 
-  const groups: Group[] = ["설정오류", "확인 필요", "추가 제안", "판정 불가"];
+  const loadingMessages = [
+    "원고를 읽는 중...",
+    "설정집과 대조하는 중...",
+    "규칙이 놓친 자리를 살피는 중...",
+    "추가 제안을 분류하는 중...",
+    "근거 문장을 원고에서 확인하는 중...",
+    "결과를 정리하는 중...",
+  ];
+  const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+
+  useEffect(() => {
+    if (!reviewInProgress) {
+      setLoadingMsgIndex(0);
+      return;
+    }
+    setLoadingMsgIndex(0);
+    const timer = setInterval(() => {
+      setLoadingMsgIndex((prev) => {
+        if (prev >= loadingMessages.length - 1) return prev;
+        return prev + 1;
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [reviewInProgress]);
+
+  const groups: Group[] = ["설정오류", "추가 제안", "판정 불가"];
 
   function solarKey(v: Violation): string {
     return `${v.line}-${v.subject}-${v.type}`;
@@ -73,18 +93,16 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
         ? pendingItems.filter((p) => p.category !== "제외").length
         : g === "설정오류"
           ? (result?.violations ?? [])
-              .filter((v) => v.severity === "high")
-              .filter((v) => !removedRuleKeys.has(ruleKey(v)))
+              .filter(
+                (v) =>
+                  (v.severity === "high" || v.severity === "medium") &&
+                  !removedRuleKeys.has(ruleKey(v)),
+              )
               .length +
               solarViolations.filter(
                 (v) => solarDecisions[solarKey(v)] !== "removed",
               ).length
-          : g === "확인 필요"
-            ? (result?.violations ?? [])
-                .filter((v) => v.severity !== "high")
-                .filter((v) => !removedRuleKeys.has(ruleKey(v)))
-                .length
-            : (result?.not_checked ?? []).length,
+          : (result?.not_checked ?? []).length,
   }));
 
   const handleFullReview = async () => {
@@ -161,7 +179,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             disabled={reviewInProgress}
             className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm text-white hover:bg-[var(--foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {reviewInProgress ? "Solar 분석 중…" : "설정집 정밀 검토"}
+            {reviewInProgress ? loadingMessages[loadingMsgIndex] : "설정집 정밀 검토"}
           </button>
         )}
       </div>
@@ -235,153 +253,35 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">설정오류 · {counts[0].count}건</h3>
 
-              {(result?.violations ?? [])
-                .filter((v) => toGroup(v) === "설정오류")
-                .map((v, idx) => (
-                  <div
-                    key={`rule-${v.line}-${v.subject}-${idx}`}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                          <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
-                            {v.type}
-                          </span>
-                          <span>줄 {v.line}</span>
-                        </div>
-                        <p className="mt-2 text-sm font-medium">{v.subject}</p>
-                        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
-                        <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
-                          {v.context}
-                        </pre>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-              {solarViolations
-                .filter((v) => solarDecisions[solarKey(v)] !== "removed")
-                .map((v, idx) => {
-                  const decision = solarDecisions[solarKey(v)];
-                  const pending = decision === "pending" || decision === undefined;
-
-                  return (
-                    <div
-                      key={`solar-${solarKey(v)}-${idx}`}
-                      className="rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded border border-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] uppercase tracking-wide">
-                              Solar
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                            <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
-                              {v.type}
-                            </span>
-                            <span>줄 {v.line}</span>
-                          </div>
-                          <p className="mt-2 text-sm font-medium">{v.subject}</p>
-                          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
-                          <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
-                            {v.context}
-                          </pre>
-                          {pending && (
-                            <p className="mt-2 text-xs text-[var(--muted-foreground)] italic">
-                              확정 전입니다. 맞으면 확정을, 틀리면 제거를 누르세요.
-                            </p>
-                          )}
-                        </div>
-
-                        {pending && (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSolarDecisions((prev) => ({
-                                  ...prev,
-                                  [solarKey(v)]: "confirmed",
-                                }));
-                              }}
-                              className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
-                            >
-                              확정
-                            </button>
-                            {!isCharacterRegistered(v.subject, loadSettings()) && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    const settings = loadSettings();
-                                    const item: ProposedAddition = {
-                                      name: v.subject,
-                                      count: 1,
-                                      first_line: v.line,
-                                      context: v.context,
-                                      note: v.detail,
-                                      category: "인물",
-                                    };
-                                    await approveAndEnrich([item], settings, loadLastManuscript());
-                                    setSolarDecisions((prev) => ({
-                                      ...prev,
-                                      [solarKey(v)]: "removed",
-                                    }));
-                                  } catch (e) {
-                                    console.error("[Solar 추가] 실패:", e);
-                                  }
-                                }}
-                                className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
-                              >
-                                설정집에 추가
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSolarDecisions((prev) => ({
-                                  ...prev,
-                                  [solarKey(v)]: "removed",
-                                }));
-                              }}
-                              className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
-                            >
-                              제거
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-
-          {activeGroup === "확인 필요" && counts[1].count > 0 && (
-            <div className="flex flex-col gap-3">
               {ruleActionError && (
                 <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
                   <span className="font-medium text-[var(--foreground)]">확인 처리 중 오류</span>
                   <p className="text-[var(--muted-foreground)]">{ruleActionError}</p>
                 </div>
               )}
-              <h3 className="text-sm font-medium">확인 필요 · {counts[1].count}건</h3>
+
               {(() => {
                 const ruleItems = (result?.violations ?? [])
-                  .filter((v) => toGroup(v) === "확인 필요")
-                  .filter((v) => !removedRuleKeys.has(ruleKey(v)));
+                  .filter(
+                    (v) =>
+                      (v.severity === "high" || v.severity === "medium") &&
+                      !removedRuleKeys.has(ruleKey(v)),
+                  )
+                  .sort(
+                    (a, b) =>
+                      (a.severity === "high" ? -1 : 1) - (b.severity === "high" ? -1 : 1),
+                  );
                 return ruleItems.map((v) => {
                   const key = ruleKey(v);
                   const registeredName = extractRegisteredNameFromDetail(v.detail);
                   const isPlace = registeredName ? isPlaceName(registeredName, loadSettings()) : false;
-                  const aliasDisabledReason = isPlace
-                    ? "지명은 별칭으로 등록할 수 없습니다"
-                    : registeredName
-                      ? null
-                      : "detail에서 등록명을 찾지 못했습니다";
-
+                  const aliasDisabledReason =
+                    isPlace
+                      ? "지명은 별칭으로 등록할 수 없습니다"
+                      : registeredName
+                        ? null
+                        : "detail에서 등록명을 찾지 못했습니다";
+                  const canEnrich = !isCharacterRegistered(v.subject, loadSettings());
                   return (
                     <div
                       key={key}
@@ -408,6 +308,15 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                          }}
+                          className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                        >
+                          확정
+                        </button>
                         {registeredName && !isPlace && (
                           <button
                             type="button"
@@ -431,6 +340,31 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                             별칭 등록
                           </button>
                         )}
+                        {canEnrich && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const settings = loadSettings();
+                                const item: ProposedAddition = {
+                                  name: v.subject,
+                                  count: 1,
+                                  first_line: v.line,
+                                  context: v.context,
+                                  note: v.detail,
+                                  category: "인물",
+                                };
+                                await approveAndEnrich([item], settings, loadLastManuscript());
+                                setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                              } catch (e) {
+                                console.error("[Solar 추가] 실패:", e);
+                              }
+                            }}
+                            className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                          >
+                            설정집에 추가
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -438,20 +372,145 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                           }}
                           className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
                         >
-                          확인함
+                          제거
                         </button>
                       </div>
                     </div>
                   );
                 });
               })()}
+
+              {solarViolations
+                .filter((v) => solarDecisions[solarKey(v)] !== "removed")
+                .map((v, idx) => {
+                  const key = solarKey(v);
+                  const decision = solarDecisions[key];
+                  const pending = decision === "pending" || decision === undefined;
+                  const registeredName = extractRegisteredNameFromDetail(v.detail);
+                  const isPlace = registeredName ? isPlaceName(registeredName, loadSettings()) : false;
+                  const canEnrich = !isCharacterRegistered(v.subject, loadSettings());
+                  return (
+                    <div
+                      key={`solar-${key}-${idx}`}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded border border-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] uppercase tracking-wide">
+                              Solar
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                            <span className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-0.5">
+                              {v.type}
+                            </span>
+                            <span>줄 {v.line}</span>
+                          </div>
+                          <p className="mt-2 text-sm font-medium">{v.subject}</p>
+                          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{v.detail}</p>
+                          <pre className="mt-2 max-w-full overflow-auto rounded border border-[var(--border)] bg-[var(--card)] p-2 text-[11px] leading-relaxed text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
+                            {v.context}
+                          </pre>
+                          {pending && (
+                            <p className="mt-2 text-xs text-[var(--muted-foreground)] italic">
+                              확정 전입니다. 맞으면 확정을, 틀리면 제거를 누르세요.
+                            </p>
+                          )}
+                        </div>
+                        {pending && (
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolarDecisions((prev) => ({
+                                  ...prev,
+                                  [key]: "confirmed",
+                                }));
+                              }}
+                              className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                            >
+                              확정
+                            </button>
+                            {registeredName && !isPlace && (
+                              <button
+                                type="button"
+                                disabled={!v.subject.trim()}
+                                onClick={async () => {
+                                  if (!v.subject.trim()) return;
+                                  try {
+                                    const updated = registerAlias(v.subject, registeredName, loadSettings());
+                                    saveSettings(updated.updated);
+                                    setSolarDecisions((prev) => ({
+                                      ...prev,
+                                      [key]: "removed",
+                                    }));
+                                  } catch (e) {
+                                    setRuleActionError(String(e));
+                                  }
+                                }}
+                                className={`rounded-md border px-3 py-1 text-xs font-medium text-white transition-colors ${
+                                  !v.subject.trim()
+                                    ? "bg-[var(--muted)]/40 border-[var(--border)] text-[var(--muted-foreground)] cursor-not-allowed"
+                                    : "bg-[var(--accent)] border-[var(--accent)] hover:bg-[var(--foreground)]"
+                                }`}
+                              >
+                                별칭 등록
+                              </button>
+                            )}
+                            {canEnrich && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const settings = loadSettings();
+                                    const item: ProposedAddition = {
+                                      name: v.subject,
+                                      count: 1,
+                                      first_line: v.line,
+                                      context: v.context,
+                                      note: v.detail,
+                                      category: "인물",
+                                    };
+                                    await approveAndEnrich([item], settings, loadLastManuscript());
+                                    setSolarDecisions((prev) => ({
+                                      ...prev,
+                                      [key]: "removed",
+                                    }));
+                                  } catch (e) {
+                                    console.error("[Solar 추가] 실패:", e);
+                                  }
+                                }}
+                                className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                              >
+                                설정집에 추가
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSolarDecisions((prev) => ({
+                                  ...prev,
+                                  [key]: "removed",
+                                }));
+                              }}
+                              className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+                            >
+                              제거
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
 
-          {activeGroup === "추가 제안" && counts[2].count > 0 && (
+          {activeGroup === "추가 제안" && counts[1].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">
-                추가 제안 · {counts[2].count}건
+                추가 제안 · {counts[1].count}건
               </h3>
 
               {approvalMessage && (
@@ -544,9 +603,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
             </div>
           )}
 
-          {activeGroup === "판정 불가" && counts[3].count > 0 && (
+          {activeGroup === "판정 불가" && counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
-              <h3 className="text-sm font-medium">판정 불가 · {counts[3].count}건</h3>
+              <h3 className="text-sm font-medium">판정 불가 · {counts[2].count}건</h3>
               <ul className="flex flex-col gap-2 text-sm text-[var(--muted-foreground)]">
                 {((result?.not_checked ?? []) as string[]).map((item) => (
                   <li key={item}>
