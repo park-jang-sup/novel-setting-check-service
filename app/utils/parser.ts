@@ -596,7 +596,8 @@ export function isCharacterRegistered(name: string, settingsRaw: string): boolea
       continue;
     }
     if (section === "characters" && line.startsWith("## ")) {
-      if (line.slice(3).trim() === target) return true;
+      const registeredName = line.slice(3).trim();
+      if (registeredName === target || target.startsWith(registeredName + "의")) return true;
     }
   }
   return false;

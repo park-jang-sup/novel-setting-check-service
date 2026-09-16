@@ -137,7 +137,6 @@ export function SettingsPanel() {
 - 나이: 24
 - 소속: 마법탑
 - 불가: 화염 마법, 검술
-- 능력: 치유, 정화, 보호막
 - 비고: 힐러. 마력85 체력65 공격30 방어60
 
 # 지명
@@ -157,7 +156,7 @@ export function SettingsPanel() {
         />
         {characters.length === 0 ? (
           <p className="text-sm text-[var(--muted-foreground)]">
-            저장한 설정집이 없습니다. 회차 원고를 넣어 추가제안 목록을 만든 뒤, 승인한 항목부터 설정집에 들어갑니다.
+            설정집이 비어 있으면 검사를 시작할 수 없습니다. 설정집과 원고를 모두 넣어 주세요. 형식이 헷갈리면 데모 샘플을 눌러 보세요.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">

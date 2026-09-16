@@ -123,6 +123,10 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
     return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
   }
 
+  function needsPlotChange(v: Violation): boolean {
+    return v.type === "ability_candidate" || v.type === "timeline_reverse";
+  }
+
   function toggleConfirmedItem(v: Violation) {
     const key = violationKey(v);
     setConfirmedItems((prev) => {
@@ -135,11 +139,17 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
   }
 
   async function openFixPanel() {
-    if (confirmedItems.length === 0) return;
     if (!result) return;
     const manuscriptText = loadLastManuscript();
     if (!manuscriptText.trim()) {
       setFixError("저장된 원고가 없어 원고 수정을 실행할 수 없습니다.");
+      return;
+    }
+    const itemsToFix = confirmedItems.filter((v) => !needsPlotChange(v));
+    if (itemsToFix.length === 0) {
+      setFixPanelOpen(true);
+      setFixError("원고 수정 대상이 없습니다.");
+      setFixLoading(false);
       return;
     }
     setFixLoading(true);
@@ -153,7 +163,7 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
         body: JSON.stringify({
           settings_text: loadSettings(),
           manuscript_text: manuscriptText,
-          confirmed_items: confirmedItems.map((v) => ({
+          confirmed_items: itemsToFix.map((v) => ({
             type: v.type,
             subject: v.subject,
             detail: v.detail,
@@ -707,15 +717,22 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                     </div>
                   );
                 })}
-              {confirmedItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={openFixPanel}
-                  disabled={fixLoading}
-                  className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
-                >
-                  {fixLoading ? "원고 수정 중..." : `원고 수정 ${confirmedItems.length}건`}
-                </button>
+              {confirmedItems.filter((v) => !needsPlotChange(v)).length > 0 && (
+                  <button
+                      type="button"
+                      onClick={openFixPanel}
+                      disabled={fixLoading}
+                      className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
+                  >
+                    {fixLoading
+                        ? "원고 수정 중..."
+                        : `원고 수정 ${confirmedItems.filter((v) => !needsPlotChange(v)).length}건`}
+                  </button>
+              )}
+              {confirmedItems.some(needsPlotChange) && (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    능력·사건 순서 항목 {confirmedItems.filter(needsPlotChange).length}건은 줄거리를 바꿔야 해서 원고 수정에서 제외됩니다.
+                  </p>
               )}
               </div>
               )}
@@ -849,7 +866,7 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
         <div className="flex flex-col gap-3 rounded-lg border border-dashed border-[var(--border)] bg-[var(--card)]/60 p-4 text-sm text-[var(--muted-foreground)]">
           <p>아직 검사하지 않았습니다.</p>
           <ol className="list-decimal list-inside space-y-1">
-            <li>왼쪽 설정집 또는 오른쪽 원고를 준비합니다.</li>
+            <li>왼쪽 설정집과 오른쪽 원고를 모두 준비합니다.</li>
             <li>원고 입력창에 회차를 붙여넣습니다.</li>
             <li>원고 아래 검사하기 버튼을 누릅니다.</li>
           </ol>
