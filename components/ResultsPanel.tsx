@@ -826,13 +826,6 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
             </div>
           )}
 
-          {fixError && (
-            <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
-              <span className="font-medium text-[var(--foreground)]">원고 수정 중 오류</span>
-              <p className="text-[var(--muted-foreground)]">{fixError}</p>
-            </div>
-          )}
-
           {appliedNotice && (
             <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
               <span className="font-medium text-[var(--foreground)]">반영 완료</span>
