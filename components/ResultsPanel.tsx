@@ -499,7 +499,11 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                           onClick={() => {
                             toggleConfirmedItem(v);
                           }}
-                          className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                          className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                            confirmedItems.some((p) => violationKey(p) === violationKey(v))
+                              ? "bg-[var(--accent)] border-[var(--accent)] text-white hover:bg-[var(--foreground)]"
+                              : "border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                          }`}
                         >
                           확정
                         </button>
@@ -617,7 +621,11 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                                   [key]: "confirmed",
                                 }));
                               }}
-                              className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                                confirmedItems.some((p) => violationKey(p) === key)
+                                  ? "bg-[var(--accent)] border-[var(--accent)] text-white hover:bg-[var(--foreground)]"
+                                  : "border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                              }`}
                             >
                               확정
                             </button>
