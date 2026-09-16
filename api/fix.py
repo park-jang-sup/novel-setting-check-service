@@ -125,6 +125,10 @@ def _build_fix_prompt(settings_text, manuscript_text, confirmed_items):
         "확정된 충돌 외의 부분은 가능한 한 원본 그대로 유지하라. "
         "문체, 대사, 구성, 다른 표현은 건드리지 마라. 설정집의 정보에 맞춰 충돌 표현만 수정하라."
     )
+    lines.append(
+        "능력·제약 충돌(ability_candidate)은 설정집에서 불가로 지정된 행위나 표현을 "
+        "원고에서 제거하거나 다른 표현으로 바꿔라. 불가 항목을 그대로 둔 채 문장만 옮기지 마라."
+    )
     lines.append("")
     lines.append(
         "고친 결과는 원고 전체여야 한다. 일부만 반환하지 마라."
