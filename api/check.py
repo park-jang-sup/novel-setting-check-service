@@ -7,7 +7,7 @@ POST /api/check
     1. settings, manuscript를 각각 임시 파일로 저장
     2. skills/novel-setting-check/scripts/check_setting.py 를 subprocess로 실행
     3. stdout의 JSON을 그대로 응답
-  check_setting.py는 한 글자도 수정하지 않음
+  check_setting.py는 원본 그대로 실행하고 그 JSON 출력을 그대로 근거로 답한다.
 """
 
 import json
