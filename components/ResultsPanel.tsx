@@ -120,7 +120,7 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
   }
 
   function violationKey(v: Violation): string {
-    return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
+    return false;
   }
 
   function needsPlotChange(v: Violation): boolean {
