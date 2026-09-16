@@ -625,7 +625,7 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                                 }));
                               }}
                               className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                                confirmedItems.some((p) => violationKey(p) === key)
+                                confirmedItems.some((p) => violationKey(p) === violationKey(v))
                                   ? "bg-[var(--accent)] border-[var(--accent)] text-white hover:bg-[var(--foreground)]"
                                   : "border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10"
                               }`}
@@ -694,7 +694,7 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                                   [key]: "removed",
                                 }));
                                 setConfirmedItems((prev) =>
-                                  prev.filter((p) => violationKey(p) !== key)
+                                  prev.filter((p) => violationKey(p) !== violationKey(v))
                                 );
                               }}
                               className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
