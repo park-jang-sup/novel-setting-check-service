@@ -346,6 +346,17 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">설정오류 · {counts[0].count}건</h3>
 
+              {confirmedItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={openFixPanel}
+                  disabled={fixLoading}
+                  className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {fixLoading ? "원고 수정 중..." : "원고 수정"}
+                </button>
+              )}
+
               {ruleActionError && (
                 <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
                   <span className="font-medium text-[var(--foreground)]">확인 처리 중 오류</span>
