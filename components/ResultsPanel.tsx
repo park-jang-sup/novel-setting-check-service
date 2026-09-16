@@ -72,7 +72,7 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
         if (prev >= loadingMessages.length - 1) return prev;
         return prev + 1;
       });
-    }, 3000);
+    }, 2000);
     return () => clearInterval(timer);
   }, [reviewInProgress]);
 
@@ -281,7 +281,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                       : registeredName
                         ? null
                         : "detail에서 등록명을 찾지 못했습니다";
-                  const canEnrich = !isCharacterRegistered(v.subject, loadSettings());
+                  const canEnrich =
+                    !isCharacterRegistered(v.subject, loadSettings()) &&
+                    (v.type === "age_conflict" || v.type === "ability_candidate");
                   return (
                     <div
                       key={key}
@@ -388,7 +390,9 @@ export function ResultsPanel({ result }: { result: CheckResult | null }) {
                   const pending = decision === "pending" || decision === undefined;
                   const registeredName = extractRegisteredNameFromDetail(v.detail);
                   const isPlace = registeredName ? isPlaceName(registeredName, loadSettings()) : false;
-                  const canEnrich = !isCharacterRegistered(v.subject, loadSettings());
+                  const canEnrich =
+                    !isCharacterRegistered(v.subject, loadSettings()) &&
+                    (v.type === "age_conflict" || v.type === "ability_candidate");
                   return (
                     <div
                       key={`solar-${key}-${idx}`}
