@@ -29,6 +29,7 @@ const WORKS = [
   ]},
   { label: "작가원고", settings: "/samples/prelim_settings.md", episodes: [
     { label: "1화", manuscript: "/samples/prelim_manuscript.txt", fillSettings: true },
+    { label: "2화", manuscript: "/samples/prelim_manuscript2.txt", fillSettings: false },
   ]},
 ];
 
