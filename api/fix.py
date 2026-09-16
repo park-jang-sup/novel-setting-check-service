@@ -261,6 +261,37 @@ def _parse_fix_response(raw_resp):
 
     return revised_manuscript, changes, None
 
+# ─────────────────────── 변경 적용(부분 교체) ───────────────────────
+
+def _apply_changes(original_text, changes):
+    """changes를 순서대로 original_text에 적용해 새 텍스트를 만든다.
+
+    각 항목:
+      - original_snippet이 비어 있거나 공백뿐이면 건너뛴다.
+      - original_snippet == revised_snippet이면 건너뛴다(변경 없음).
+      - original_snippet이 현재 working_text에 없으면 건너뛴다(찾을 수 없음).
+      - 있으면 original_snippet을 revised_snippet으로 첫 occurrence를 교체한다.
+    반환: (new_text, applied_changes, skipped_not_found, skipped_no_change)
+    """
+    working = original_text
+    applied = []
+    not_found = 0
+    no_change = 0
+    for ch in changes:
+        orig_raw = ch.get("original_snippet") or ""
+        rev_raw = ch.get("revised_snippet") or ""
+        orig = orig_raw.strip()
+        rev = rev_raw.strip()
+        if not orig or orig == rev:
+            no_change += 1
+            continue
+        if orig_raw not in working:
+            not_found += 1
+            continue
+        working = working.replace(orig_raw, rev_raw, 1)
+        applied.append(ch)
+    return working, applied, not_found, no_change
+
 # ─────────────────────── 길이 검증 ───────────────────────
 
 def _revised_too_short(revised_manuscript, manuscript_text):
@@ -286,36 +317,40 @@ def _process(settings_text, manuscript_text, confirmed_items, api_key):
         raw_resp = _call_solar(api_key, prompt_text)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        return None, [], [f"Solar HTTP {exc.code}: {body}"]
+        return None, [], [f"Solar HTTP {exc.code}: {body}"], {}
     except urllib.error.URLError as exc:
-        return None, [], [f"Solar 연결 실패: {exc.reason}"]
+        return None, [], [f"Solar 연결 실패: {exc.reason}"], {}
     except Exception as exc:
-        return None, [], [f"Solar 호출 중 예기치 않은 오류: {exc}"]
+        return None, [], [f"Solar 호출 중 예기치 않은 오류: {exc}"], {}
 
     # 2) 응답 파싱
     revised_manuscript, changes, parse_error = _parse_fix_response(raw_resp)
     if parse_error:
-        return None, [], [parse_error]
+        return None, [], [parse_error], {}
 
-    # 3) 길이 검증
-    if _revised_too_short(revised_manuscript, manuscript_text):
-        return None, [], [
-            f"고친 원고가 너무 짧습니다 (원본 {len(manuscript_text.strip())}자, "
-            f"수정본 {len(revised_manuscript.strip())}자). 원고 전체가 반환되었는지 확인하라."
-        ]
-
-    # 4) 결과 조립
-    summary = {
-        "confirmed_count": len(confirmed_items),
-        "revised_length": len(revised_manuscript.strip()),
-        "original_length": len(manuscript_text.strip()),
-    }
-    return (
-        revised_manuscript,
-        changes,
-        [],
-        summary,
+    # 결과 조립 — 원문 + changes 기반 부분 교체
+    assembled, applied_changes, not_found, no_change = _apply_changes(
+        manuscript_text, changes
     )
+
+    if applied_changes:
+        summary = {
+            "confirmed_count": len(confirmed_items),
+            "revised_length": len(assembled.strip()),
+            "original_length": len(manuscript_text.strip()),
+        }
+        return (
+            assembled,
+            applied_changes,
+            [],
+            summary,
+        )
+
+    # 변경된 항목이 하나도 없음
+    return None, [], [
+        "확정된 항목 중 실제로 바뀐 부분이 없습니다 "
+        f"(찾을 수 없음: {not_found}건, 변경 없음: {no_change}건)"
+    ], {}
 
 # ─────────────────────── Vercel 핸들러 ───────────────────────
 
