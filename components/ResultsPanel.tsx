@@ -559,6 +559,9 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                           type="button"
                           onClick={() => {
                             setRemovedRuleKeys((prev) => new Set(prev).add(key));
+                            setConfirmedItems((prev) =>
+                              prev.filter((p) => violationKey(p) !== key)
+                            );
                           }}
                           className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
                         >
