@@ -355,9 +355,17 @@ class handler(BaseHTTPRequestHandler):
             )
             return
 
-        revised_manuscript, changes, errors, summary = _process(
-            settings_text, manuscript_text, confirmed_items, api_key
-        )
+        try:
+            revised_manuscript, changes, errors, summary = _process(
+                settings_text, manuscript_text, confirmed_items, api_key
+            )
+        except Exception as exc:
+            _fail(
+                self,
+                f"처리 중 예기치 않은 오류: {exc}",
+                confirmed_count=0,
+            )
+            return
 
         if errors:
             _fail(
