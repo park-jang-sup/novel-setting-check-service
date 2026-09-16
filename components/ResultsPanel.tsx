@@ -346,15 +346,95 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">설정오류 · {counts[0].count}건</h3>
 
-              {confirmedItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={openFixPanel}
-                  disabled={fixLoading}
-                  className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {fixLoading ? "원고 수정 중..." : "원고 수정"}
-                </button>
+              {fixPanelOpen && fixResult && (
+                <div className="flex flex-col gap-4 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">
+                      Solar 수정 결과 · {fixResult.changes.length}건
+                    </h3>
+                    <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                      <span>확정 {fixResult.summary.confirmed_count}건</span>
+                      <span>수정본 {fixResult.summary.revised_length}자</span>
+                    </div>
+                  </div>
+
+                  {fixResult.changes.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {fixResult.changes.map((ch) => (
+                        <div key={ch.item_index} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{ch.subject}</span>
+                            <span className="text-xs text-[var(--muted-foreground)]">
+                              #{ch.item_index + 1}
+                            </span>
+                          </div>
+                          <div className="mt-2 space-y-1 text-sm">
+                            <p className="text-[var(--muted-foreground)]">{ch.change_description}</p>
+                            {ch.original_snippet && (
+                              <p className="text-xs text-[var(--muted-foreground)]">
+                                원본: {ch.original_snippet}
+                              </p>
+                            )}
+                            {ch.revised_snippet && (
+                              <p className="text-xs text-[var(--accent)]">
+                                수정: {ch.revised_snippet}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      확정된 항목에 대해 원고가 수정되었습니다. 변경된 표현이 없으면 이 메시지가 표시됩니다.
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const manuscript = fixResult.revised_manuscript;
+                        saveLastManuscript(manuscript);
+                        if (onManuscriptChange) {
+                          onManuscriptChange(manuscript);
+                        }
+                        setConfirmedItems([]);
+                        setAppliedNotice(`원고가 바뀌었으니 다시 검사하세요.`);
+                        setFixPanelOpen(false);
+                        setFixResult(null);
+                      }}
+                      className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--foreground)] transition-colors"
+                    >
+                      적용
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFixPanelOpen(false);
+                        setFixResult(null);
+                        setAppliedNotice(null);
+                      }}
+                      className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {fixError && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
+                  <span className="font-medium text-[var(--foreground)]">원고 수정 중 오류</span>
+                  <p className="text-[var(--muted-foreground)]">{fixError}</p>
+                </div>
+              )}
+
+              {appliedNotice && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
+                  <span className="font-medium text-[var(--foreground)]">반영 완료</span>
+                  <p className="text-[var(--muted-foreground)]">{appliedNotice}</p>
+                </div>
               )}
 
               {ruleActionError && (
@@ -616,10 +696,20 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                     </div>
                   );
                 })}
-            </div>
-          )}
+              {confirmedItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={openFixPanel}
+                  disabled={fixLoading}
+                  className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary)]/90 whitespace-nowrap"
+                >
+                  {fixLoading ? "원고 수정 중..." : `원고 수정 ${confirmedItems.length}건`}
+                </button>
+              )}
+              </div>
+              )}
 
-          {activeGroup === "추가 제안" && counts[1].count > 0 && (
+              {activeGroup === "추가 제안" && counts[1].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">
                 추가 제안 · {counts[1].count}건
@@ -715,84 +805,6 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
             </div>
           )}
 
-          {/* 원고 수정 결과 패널 */}
-          {fixPanelOpen && fixResult && (
-            <div className="flex flex-col gap-4 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">
-                  Solar 수정 결과 · {fixResult.changes.length}건
-                </h3>
-                <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
-                  <span>확정 {fixResult.summary.confirmed_count}건</span>
-                  <span>수정본 {fixResult.summary.revised_length}자</span>
-                </div>
-              </div>
-
-              {fixResult.changes.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {fixResult.changes.map((ch) => (
-                    <div key={ch.item_index} className="rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium">{ch.subject}</span>
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          #{ch.item_index + 1}
-                        </span>
-                      </div>
-                      <div className="mt-2 space-y-1 text-sm">
-                        <p className="text-[var(--muted-foreground)]">{ch.change_description}</p>
-                        {ch.original_snippet && (
-                          <p className="text-xs text-[var(--muted-foreground)]">
-                            원본: {ch.original_snippet}
-                          </p>
-                        )}
-                        {ch.revised_snippet && (
-                          <p className="text-xs text-[var(--accent)]">
-                            수정: {ch.revised_snippet}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--muted-foreground)]">
-                  확정된 항목에 대해 원고가 수정되었습니다. 변경된 표현이 없으면 이 메시지가 표시됩니다.
-                </p>
-              )}
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const manuscript = fixResult.revised_manuscript;
-                    saveLastManuscript(manuscript);
-                    if (onManuscriptChange) {
-                      onManuscriptChange(manuscript);
-                    }
-                    setConfirmedItems([]);
-                    setAppliedNotice(`원고가 바뀌었으니 다시 검사하세요.`);
-                    setFixPanelOpen(false);
-                    setFixResult(null);
-                  }}
-                  className="rounded-md border border-[var(--accent)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--foreground)] transition-colors"
-                >
-                  적용
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFixPanelOpen(false);
-                    setFixResult(null);
-                    setAppliedNotice(null);
-                  }}
-                  className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
-
           {activeGroup === "판정 불가" && counts[2].count > 0 && (
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">판정 불가 · {counts[2].count}건</h3>
@@ -809,27 +821,6 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {fixError && (
-            <div className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/80 p-3 text-sm">
-              <span className="font-medium text-[var(--foreground)]">원고 수정 중 오류</span>
-              <p className="text-[var(--muted-foreground)]">{fixError}</p>
-            </div>
-          )}
-
-          {appliedNotice && (
-            <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
-              <span className="font-medium text-[var(--foreground)]">반영 완료</span>
-              <p className="text-[var(--muted-foreground)]">{appliedNotice}</p>
-            </div>
-          )}
-
-          {appliedNotice && (
-            <div className="flex flex-col gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3 text-sm">
-              <span className="font-medium text-[var(--foreground)]">반영 완료</span>
-              <p className="text-[var(--muted-foreground)]">{appliedNotice}</p>
             </div>
           )}
 
