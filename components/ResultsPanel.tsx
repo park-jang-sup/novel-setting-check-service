@@ -120,11 +120,11 @@ export function ResultsPanel({ result, onManuscriptChange }: { result: CheckResu
   }
 
   function violationKey(v: Violation): string {
-    return false;
+    return `${v.line}-${v.subject}-${v.type}-${v.source ?? "rule"}`;
   }
 
   function needsPlotChange(v: Violation): boolean {
-    return v.type === "ability_candidate" || v.type === "timeline_reverse";
+    return false;
   }
 
   function toggleConfirmedItem(v: Violation) {
